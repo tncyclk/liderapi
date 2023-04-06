@@ -35,6 +35,7 @@ import org.springframework.stereotype.Component;
 
 import tr.org.lider.entities.CommandExecutionImpl;
 import tr.org.lider.entities.CommandImpl;
+import tr.org.lider.entities.PolicyExceptionImpl;
 import tr.org.lider.entities.PolicyImpl;
 import tr.org.lider.entities.ProfileImpl;
 import tr.org.lider.ldap.LDAPServiceImpl;
@@ -48,6 +49,7 @@ import tr.org.lider.messaging.messages.IGetPoliciesMessage;
 import tr.org.lider.repositories.PolicyRepository;
 import tr.org.lider.services.AdService;
 import tr.org.lider.services.ConfigurationService;
+import tr.org.lider.services.PolicyExceptionService;
 
 /**
  * Provides related agent and user policies according to specified username and
@@ -67,9 +69,12 @@ public class PolicySubscriberImpl implements IPolicySubscriber {
 	
 	@Autowired
 	private ConfigurationService configurationService;
+	
 	@Autowired
 	private PolicyRepository policyDao;
 	
+	@Autowired
+	private PolicyExceptionService policyExceptionService;
 //	private IMessageFactory messageFactory;
 
 	@Override
@@ -83,7 +88,12 @@ public class PolicySubscriberImpl implements IPolicySubscriber {
 		// Find LDAP user entry
 		String userDn = findUserDn(userUid);
 		// Find LDAP group entries to which user belongs
+		List<PolicyExceptionImpl> policyExceptionImpl = policyExceptionService.listByDn(userDn);
 		List<LdapEntry> groupsOfUser = findGroups(userDn);
+		for (LdapEntry ldapEntry : groupsOfUser) {
+			policyExceptionImpl.addAll(policyExceptionService.listByDn(ldapEntry.getDistinguishedName()));
+		}
+		
 
 		// Find policy for user groups.
 		// (User policy can be related to either user entry or group entries
@@ -92,6 +102,7 @@ public class PolicySubscriberImpl implements IPolicySubscriber {
 		for (LdapEntry ldapEntry : groupsOfUser) {
 			List<Object[]> result = policyDao.findPoliciesByGroupDn(ldapEntry.getDistinguishedName());
 			resultList.addAll(result);
+			
 		}
 		PolicyImpl userPolicy = null;
 		Long userCommandExecutionId = null;
@@ -134,7 +145,16 @@ public class PolicySubscriberImpl implements IPolicySubscriber {
 					}
 				}
 				
-				if(sendUserPolicy) {
+				boolean isPolicyException = false;
+				if (policyExceptionImpl != null && policyExceptionImpl.size() > 0) {
+					for (int j = 0; j < policyExceptionImpl.size(); j++) {
+						if (policyExceptionImpl.get(j).getPolicy().getId().equals(userPolicy.getId())) {
+							isPolicyException = true;
+						}
+					}
+				}
+				
+				if(sendUserPolicy && !isPolicyException) {
 					ExecutePolicyImpl policy = new ExecutePolicyImpl();
 					policy.setPolicyID(userPolicy.getId());
 					policy.setAgentCommandExecutionId(null);
@@ -162,17 +182,29 @@ public class PolicySubscriberImpl implements IPolicySubscriber {
 	        { 
 	            // search  for value 
 	            boolean isPolicyDeleted = true;
+	            boolean isPolicyException = false;
 	    		if(resultList != null && !resultList.isEmpty()) {
 	    			for (int i = 0; i < resultList.size(); i++) {
+	    				isPolicyException = false;
+	    				isPolicyDeleted = true;
 	    				userPolicy = (PolicyImpl) resultList.get(i)[0];
 	    				if(String.valueOf(userPolicy.getId()).equals(policyID)) {
 	    					isPolicyDeleted = false;
-	    					break;
+//	    					break;
+	    				}
+	    				
+	    				if (policyExceptionImpl != null && policyExceptionImpl.size() > 0) {
+	    					for (int j = 0; j < policyExceptionImpl.size(); j++) {
+	    						if (policyExceptionImpl.get(j).getPolicy().getId().equals(userPolicy.getId())) {
+	    							isPolicyException = true;
+//	    							break;
+	    						}
+	    					}
 	    				}
 	    			}
 	    		}
 				
-	    		if(isPolicyDeleted) {
+	    		if(isPolicyDeleted || isPolicyException) {
 	    			ExecutePolicyImpl policy = new ExecutePolicyImpl();
 					policy.setPolicyID(Long.valueOf(policyID));
 					policy.setAgentCommandExecutionId(null);

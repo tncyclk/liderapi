@@ -1,5 +1,7 @@
 package tr.org.lider.controllers;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 
 import org.slf4j.Logger;
@@ -19,15 +21,20 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import tr.org.lider.entities.OperationType;
 import tr.org.lider.entities.RegistrationTemplateImpl;
 import tr.org.lider.models.RegistrationTemplateType;
 import tr.org.lider.services.RegistrationTemplateService;
+import tr.org.lider.services.OperationLogService;
 
 /**
  * REST controller for managing registration template
@@ -46,6 +53,8 @@ public class RegistrationTemplateController {
 	@Autowired
 	private RegistrationTemplateService registrationTemplateService;
 	
+	@Autowired
+	private OperationLogService operationLogService;	
 	
 	@Operation(summary = "Find registration template by id", description = "", tags = { "registration-template" })
 	@ApiResponses(value = { 
@@ -102,6 +111,19 @@ public class RegistrationTemplateController {
     				.build();
         }
         RegistrationTemplateImpl result = registrationTemplateService.save(template);
+        
+        Map<String, Object> requestData = new HashMap<String, Object>();
+		requestData.put("createdTemplate",result);
+		ObjectMapper dataMapper = new ObjectMapper();
+		String jsonString = null ; 
+		try {
+			jsonString = dataMapper.writeValueAsString(requestData);
+		} catch (JsonProcessingException e1) {
+			logger.error("Error occured while mapping request data to json. Error: " +  e1.getMessage());
+		}
+		String log = result.getUnitId() + " registiration template has been created";
+		operationLogService.saveOperationLog(OperationType.CREATE, log, jsonString.getBytes(), null, null, null);
+        
 		return ResponseEntity
 				.status(HttpStatus.OK)
 				.body(result);
@@ -131,6 +153,19 @@ public class RegistrationTemplateController {
 		existingTemplate.get().setUnitId(template.getUnitId());
 		existingTemplate.get().setParentDn(template.getParentDn());
 		RegistrationTemplateImpl result = registrationTemplateService.save(existingTemplate.get());
+		
+		Map<String, Object> requestData = new HashMap<String, Object>();
+		requestData.put("existingTemplate",existingTemplate.get());
+		ObjectMapper dataMapper = new ObjectMapper();
+		String jsonString = null ; 
+		try {
+			jsonString = dataMapper.writeValueAsString(requestData);
+		} catch (JsonProcessingException e1) {
+			logger.error("Error occured while mapping request data to json. Error: " +  e1.getMessage());
+		}
+		String log = existingTemplate.get().getUnitId() + " registiration template has been updated";
+		operationLogService.saveOperationLog(OperationType.UPDATE, log, jsonString.getBytes(), null, null, null);
+		
 		return ResponseEntity
 				.status(HttpStatus.OK)
 				.body(result);
@@ -142,7 +177,7 @@ public class RegistrationTemplateController {
 			  @ApiResponse(responseCode = "200", description = ""),
 			  @ApiResponse(responseCode = "404", description = "Template id not found", 
 			    content = @Content(schema = @Schema(implementation = String.class))) })
-	@DeleteMapping(value = "/registration-templates/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+	@DeleteMapping(value = "/registration-templates/id/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
 	public ResponseEntity<?> deleteTemplate(@PathVariable Long id) {
 		logger.debug("Request to delete template {} ", id);
 		if(!registrationTemplateService.findByID(id).isPresent()) {
@@ -153,8 +188,22 @@ public class RegistrationTemplateController {
     				.status(HttpStatus.NOT_FOUND)
     				.headers(headers)
     				.build();
-		}
+		}		
+		Optional<RegistrationTemplateImpl> deletedTemplate = registrationTemplateService.findRegistrationTemplateByID(id);
 		registrationTemplateService.delete(id);
+		
+		Map<String, Object> requestData = new HashMap<String, Object>();
+		requestData.put("deletedTemplate",deletedTemplate.get());
+		ObjectMapper dataMapper = new ObjectMapper();
+		String jsonString = null ; 
+		try {
+			jsonString = dataMapper.writeValueAsString(requestData);
+		} catch (JsonProcessingException e1) {
+			logger.error("Error occured while mapping request data to json. Error: " +  e1.getMessage());
+		}
+		String log = deletedTemplate.get().getUnitId() + " registiration template has been deleted";
+		operationLogService.saveOperationLog(OperationType.DELETE, log, jsonString.getBytes(), null, null, null);
+		
 		return ResponseEntity
 				.status(HttpStatus.OK)
 				.body(null);

@@ -26,10 +26,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import aj.org.objectweb.asm.Type;
 import tr.org.lider.entities.AgentImpl;
 import tr.org.lider.entities.AgentPropertyImpl;
 import tr.org.lider.entities.CommandImpl;
 import tr.org.lider.entities.OperationLogImpl;
+import tr.org.lider.messaging.enums.StatusCode;
 
 @Service
 public class ExcelExportService {
@@ -333,7 +335,9 @@ public class ExcelExportService {
 			cell = row.createCell(colCount++);
 			cell.setCellValue(String.valueOf(counter++));
 			cell.setCellStyle(csBordered);
-			
+			int success = 0;
+			int fail = 0;
+			int waiting = 0;
 			
 			cell = row.createCell(colCount++);
 			cell.setCellValue(command.getTask().getPlugin().getDescription());
@@ -355,17 +359,30 @@ public class ExcelExportService {
 			cell.setCellValue(command.getUidList().size());
 			cell.setCellStyle(csBordered);
 			
-			cell = row.createCell(colCount++);
-			cell.setCellValue(command.getCommandExecutions().size());
-			cell.setCellStyle(csBordered);
-			
-			cell = row.createCell(colCount++);
-			cell.setCellValue(command.getCommandExecutions().size());
-			cell.setCellStyle(csBordered);
-			
-			cell = row.createCell(colCount++);
-			cell.setCellValue(command.getCommandExecutions().size());
-			cell.setCellStyle(csBordered);
+			for(int i = 0; i < command.getCommandExecutions().size(); i++) {
+				if(command.getCommandExecutions().get(i).getCommandExecutionResults().size() < 1){
+					waiting++;
+				}
+				else if(command.getCommandExecutions().get(i).getCommandExecutionResults().size() > 0) {
+					StatusCode responseCode = command.getCommandExecutions().get(i).getCommandExecutionResults().get(0).getResponseCode();
+					if(responseCode.equals(StatusCode.TASK_PROCESSED))
+						success++;
+					else 
+						fail++;
+				}
+			}
+
+				cell = row.createCell(colCount++);
+				cell.setCellValue(success);
+				cell.setCellStyle(csBordered);
+
+				cell = row.createCell(colCount++);
+				cell.setCellValue(waiting);
+				cell.setCellStyle(csBordered);
+	
+				cell = row.createCell(colCount++);
+				cell.setCellValue(fail);
+				cell.setCellStyle(csBordered);
 			
 			cell = row.createCell(colCount++);
 			cell.setCellValue("HAYIR");

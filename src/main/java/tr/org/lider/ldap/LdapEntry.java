@@ -14,71 +14,71 @@ public class LdapEntry implements Serializable , Comparable<LdapEntry>{
 	 * distinguished name
 	 */
 	private String distinguishedName;
-	
+
 	private String ou;
-	
+
 	private String cn;
-	
+
 	private String uid;
-	
+
 	private String sn;
-	
+
 	private String o;
-	
+
 	private String userPassword;
-	
+
 	private String parent;
-	
+
 	private String parentName;
-	
+
 	private String entryUUID;
-	
+
 	private String hasSubordinates;
 
 	private String name;	
-	
+
 	private String iconPath;	
-	
+
 	private String expandedUser;
 
 	/**
 	 * single valued attributes
 	 */
 	private Map<String, String> attributes;
-	
+
 	/**
 	 * multiple valued attributes
 	 */
 	private Map<String, String[]> attributesMultiValues;
 
 	private DNType type;
-	
+
 	private boolean isOnline;
-	
+
 	private List<String> priviliges;
-	
+
 	private List<LdapEntry> childEntries;
-	
+
 	private String telephoneNumber;
-	
+
 	private String homePostalAddress;
 
 	private String createDateStr;
-	
+
 	private String modifyDateStr;
-	
+
 	private String mail;
 
 	private List<UserSessionsModel> sessionList;
-	
+
 	private Integer agentListSize;
-	
+
 	private Integer onlineAgentListSize;
-	
+
 	private List<LdapEntry> agentList;
-	
+
 	private List<LdapEntry> onlineAgentList;
-	
+
 	public LdapEntry() {
 		// TODO Auto-generated constructor stub
 	}
@@ -95,12 +95,20 @@ public class LdapEntry implements Serializable , Comparable<LdapEntry>{
 		this.attributesMultiValues = attributesMultiValues;
 		this.type = type;
 		this.priviliges=priviliges;
-		
+
+		if (attributes.containsKey("homePostalAddress")) {
+			this.homePostalAddress = attributes.get("homePostalAddress");
+		}
+
+		if (attributes.containsKey("telephoneNumber")) {
+			this.telephoneNumber = attributes.get("telephoneNumber");
+		}
+
 		if(attributes!=null) {
-		setAttributesToFields(attributes);
+			setAttributesToFields(attributes);
 		}
 		if(attributesMultiValues!=null) {
-		String[] objectClasses= getAttributesMultiValues().get("objectClass");
+			String[] objectClasses= getAttributesMultiValues().get("objectClass");
 			if(objectClasses!=null) {
 				for (int i = 0; i < objectClasses.length; i++) {
 					String objClass=objectClasses[i];
@@ -108,9 +116,9 @@ public class LdapEntry implements Serializable , Comparable<LdapEntry>{
 					else if(objClass.equals("container")) { setType(DNType.CONTAINER); break;  }
 					else if(objClass.equals("computer")) { 
 						if(getAttributesMultiValues().get("operatingSystem")!=null) {
-						if(getAttributesMultiValues().get("operatingSystem")[0].contains("linux-gnu") ) {setType(DNType.AHENK);}
-						else if(getAttributesMultiValues().get("operatingSystem")[0].contains("Windows") ) {setType(DNType.WIND0WS_AHENK);}
-						 break;  
+							if(getAttributesMultiValues().get("operatingSystem")[0].contains("linux-gnu") ) {setType(DNType.AHENK);}
+							else if(getAttributesMultiValues().get("operatingSystem")[0].contains("Windows") ) {setType(DNType.WIND0WS_AHENK);}
+							break;  
 						}
 					}
 					else if(objClass.equals("organizationalPerson")) { setType(DNType.USER);  }
@@ -118,7 +126,7 @@ public class LdapEntry implements Serializable , Comparable<LdapEntry>{
 				}
 			}
 		}
-		
+
 		if(attributes!=null) {
 			String dateStr= get("createTimestamp");
 			if(dateStr!=null) {
@@ -132,7 +140,7 @@ public class LdapEntry implements Serializable , Comparable<LdapEntry>{
 			}
 		}
 	}
-	
+
 	/**
 	 * set 
 	 * @param attributes
@@ -148,9 +156,9 @@ public class LdapEntry implements Serializable , Comparable<LdapEntry>{
 		setUserPassword(getAttributes().get("userPassword"));
 		setExpandedUser("FALSE");
 		if(getType()!=null && getType().equals(DNType.USER)) {
-		setName( (getAttributes().get("ou")!=null &&  !getAttributes().get("ou").equals("")) 
-				? getAttributes().get("ou") : getAttributes().get("uid")!=null &&  !getAttributes().get("uid").equals("") 
-				? getAttributes().get("uid") : getAttributes().get("cn")!=null &&  !getAttributes().get("cn").equals("") ? getAttributes().get("cn"): getAttributes().get("o") );
+			setName( (getAttributes().get("ou")!=null &&  !getAttributes().get("ou").equals("")) 
+					? getAttributes().get("ou") : getAttributes().get("uid")!=null &&  !getAttributes().get("uid").equals("") 
+					? getAttributes().get("uid") : getAttributes().get("cn")!=null &&  !getAttributes().get("cn").equals("") ? getAttributes().get("cn"): getAttributes().get("o") );
 		}
 		else {
 			setName( (getAttributes().get("ou")!=null &&  !getAttributes().get("ou").equals("")) 
@@ -191,11 +199,11 @@ public class LdapEntry implements Serializable , Comparable<LdapEntry>{
 		return type;
 	}
 
-//	@Override
-//	public String toString() {
-//		return "LdapEntry [distinguishedName=" + distinguishedName + ", attributes=" + attributes + ", type=" + type
-//				+ "]";
-//	}
+	//	@Override
+	//	public String toString() {
+	//		return "LdapEntry [distinguishedName=" + distinguishedName + ", attributes=" + attributes + ", type=" + type
+	//				+ "]";
+	//	}
 
 	public boolean isOnline() {
 		return isOnline;
@@ -320,48 +328,48 @@ public class LdapEntry implements Serializable , Comparable<LdapEntry>{
 	public void setIconPath(String iconPath) {
 		this.iconPath = iconPath;
 	}
-	
+
 	public String getExpandedUser() {
 		return expandedUser;
 	}
-	
+
 	public void setExpandedUser(String expandedUser) {
 		this.expandedUser = expandedUser;
 	}
-	
+
 	public List<String> getPriviliges() {
 		return priviliges;
 	}
-	
+
 	public void setPriviliges(List<String> priviliges) {
 		this.priviliges = priviliges;
 	}
-	
+
 	public String getTelephoneNumber() {
 		return telephoneNumber;
 	}
-	
+
 	public void setTelephoneNumber(String telephoneNumber) {
 		this.telephoneNumber = telephoneNumber;
 	}
 	public String getHomePostalAddress() {
 		return homePostalAddress;
 	}
-	
+
 	public void setHomePostalAddress(String homePostalAddress) {
 		this.homePostalAddress = homePostalAddress;
 	}
-	
+
 	public Map<String, String[]> getAttributesMultiValues() {
 		return attributesMultiValues;
 	}
-	
+
 	public void setAttributesMultiValues(Map<String, String[]> attributesMultiValues) {
 		this.attributesMultiValues = attributesMultiValues;
 	}
 	@Override
 	public int compareTo(LdapEntry o) {
-		
+
 		return  o.getType().compareTo(getType());
 	}
 	public String getMail() {

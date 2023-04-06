@@ -65,6 +65,7 @@ public class PluginService {
 		pluginList.add(new PluginImpl("user-privilege", "1.0.0", "Kullanıcı yetkilendierme ve kısıtlaması", true, false, true, true, true, true, false, false));
 		pluginList.add(new PluginImpl("ldap", "1.0.0", "İstemci silme, ad değiştirme ve taşıma işlemleri", true, false, true, true, false, true, false, false));
 		pluginList.add(new PluginImpl("screenshot", "1.0.0", "Ekran görüntüsü", true, false, true, true, true, true, true, false));
+		pluginList.add(new PluginImpl("browser-chrome", "1.0.0", "Chrome Tarayıcı yönetimi", true, false, true, true, true, true, false, false));
 		
 		
 		for (int i = 0; i < pluginList.size(); i++) {
@@ -126,7 +127,7 @@ public class PluginService {
 		pluginTaskList.add(new PluginTask("Paket Deposu Ekle veya Sil", "package-sources", "İstemcide bulunan paket deposunu siler veya yeni depo ekler", "PACKAGE_SOURCES", false, findPluginIdByName("package-manager"), 0));
 		pluginTaskList.add(new PluginTask("Paket Kaldır", "package-management", "İstemcide bulunan paket veya paketleri kaldırır", "PACKAGE_MANAGEMENT", false, findPluginIdByName("package-manager"), 1));
 		pluginTaskList.add(new PluginTask("Paket Kur veya Kaldır", "packages", "İstenilen paket deposundan istemciye paket kurar veya seçilen paket veya paketleri kaldırır", "PACKAGES", true, findPluginIdByName("package-manager"), 1));
-		pluginTaskList.add(new PluginTask("İsmcideki Paketleri Listele", "installed-packages", "İstemcide bulunan paketleri listeler", "INSTALLED_PACKAGES", false, findPluginIdByName("package-manager"), 0));
+		pluginTaskList.add(new PluginTask("İstemcideki Paketleri Listele", "installed-packages", "İstemcide bulunan paketleri listeler", "INSTALLED_PACKAGES", false, findPluginIdByName("package-manager"), 0));
 		pluginTaskList.add(new PluginTask("Paket Kontrol Et", "check-package", "Paket kontrol eder", "CHECK_PACKAGE", true, findPluginIdByName("package-manager"), 1));
 //		remote-access plugin task 
 		pluginTaskList.add(new PluginTask("Uzak Masaüstü", "remote-access", "İstemciye uzak masaüstü erişimi sağlar", "SETUP-VNC-SERVER", false, findPluginIdByName("remote-access"), 1));
@@ -145,6 +146,7 @@ public class PluginService {
 		pluginTaskList.add(new PluginTask("Uygulama Sınırlı Erişim Yönetimi", "application-restriction", "ETA uygulama kısıtlama", "APPLICATION_RESTRICTION", false, findPluginIdByName("system-restriction"), 0));
 		pluginTaskList.add(new PluginTask("ETA-Uygulama Listeleme", "installed-application", "ETA uygulama listeleme", "INSTALLED_APPLICATIONS", false, findPluginIdByName("system-restriction"), 0));
 		pluginTaskList.add(new PluginTask("Ekran Görüntüsü Al", "screenshot", "İstemcide oturum açmış olan kullanıcının ekran görüntüsünü alır", "TAKE-SCREENSHOT", false, findPluginIdByName("screenshot"), 0));
+		pluginTaskList.add(new PluginTask("USB Kural Yönetimi", "usb-rule-management", "İstemcideki USB kurallarını yönetir", "MANAGE_USB_RULE", true, findPluginIdByName("usb"), 1));
 		
 		for (int i = 0; i < pluginTaskList.size(); i++) {
 			if (findPluginTaskByPage(pluginTaskList.get(i).getPage()).isEmpty()) {
@@ -160,12 +162,13 @@ public class PluginService {
 //		String name(1), String page(2), String description(3), String command_id(4), PluginImpl plugin_id(5), Integer state(6)
 		pluginProfileList.add(new PluginProfile("Sistem Gözlemcisi Profili", "conky-profile", "Masaüstü mesaj yönetimi", "EXECUTE_CONKY", findPluginIdByName("conky"), 1));
 		pluginProfileList.add(new PluginProfile("Betik Profili", "execute-script-profile", "Betik çalıştır", "EXECUTE_SCRIPT", findPluginIdByName("script"), 1));
-		pluginProfileList.add(new PluginProfile("Ağ Tarayıcı Profili", "browser-profile", "Ağ tarayıcı yönetimi", "BROWSER", findPluginIdByName("browser"), 1));
+		pluginProfileList.add(new PluginProfile("Ağ Tarayıcı-Firefox Profili", "browser-profile", "Ağ tarayıcı-Firefox yönetimi", "BROWSER", findPluginIdByName("browser"), 1));
 		pluginProfileList.add(new PluginProfile("Disk Kota Profili", "disk-quota-profile", "Kullanıcı disk kota yönetimi", "GET_QUOTA", findPluginIdByName("disk-quota"), 0));
 		pluginProfileList.add(new PluginProfile("Oturum Yönetimi Profili", "login-manager-profile", "Kullanıcı oturum yönetimi", "MANAGE", findPluginIdByName("login-manager"), 1));
 		pluginProfileList.add(new PluginProfile("Rsyslog Profili", "rsyslog-profile", "Rsyslog ile log yönetimi", "CONFIGURE_RSYSLOG", findPluginIdByName("rsyslog"), 1));
 		pluginProfileList.add(new PluginProfile("USB Profili", "usb-profile", "I/O yönetimi", "MANAGE-USB", findPluginIdByName("usb"), 1));
 		pluginProfileList.add(new PluginProfile("Kullanıcı Ayrıcalıkları Profili", "user-privilege-profile", "Kullanıcı ayrıcalıkları yönetimi", "USER-PRIVILEGE", findPluginIdByName("user-privilege"), 0));
+		pluginProfileList.add(new PluginProfile("Ağ Tarayıcı-Chrome Profili", "browser-chrome-profile", "Ağ tarayıcı-Chrome yönetimi", "BROWSER-CHROME", findPluginIdByName("browser-chrome"), 1));
 		
 		for (int i = 0; i < pluginProfileList.size(); i++) {
 			if (findPluginProfileByPage(pluginProfileList.get(i).getPage()).isEmpty()) {

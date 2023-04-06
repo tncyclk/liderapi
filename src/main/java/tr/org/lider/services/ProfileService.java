@@ -50,23 +50,23 @@ public class ProfileService {
 		return existProfile;
 	}
 
-	public ProfileImpl delete(ProfileImpl profile) {
-		ProfileImpl existProfile = findProfileByID(profile.getId());
-		existProfile.setDeleted(true);
-		existProfile.setModifyDate(new Date());
-		List<PolicyImpl> policies = policyProfileRepository.findAllByProfileId(profile.getId());
+	public ProfileImpl delete(Long id) {
+		ProfileImpl existingProfile = findProfileByID(id);
+		existingProfile.setDeleted(true);
+		existingProfile.setModifyDate(new Date());
+		List<PolicyImpl> policies = policyProfileRepository.findAllByProfileId(id);
 		for (PolicyImpl policy : policies) {
 			Set<ProfileImpl> profiles = policy.getProfiles();
-			profiles.removeIf(p -> p.getId() == profile.getId());
+			profiles.removeIf(p -> p.getId() == id);
 			policy.setProfiles(profiles);
 			policyService.update(policy);
 		}
 		try {
-			operationLogService.saveOperationLog(OperationType.DELETE, "Profil silindi.", existProfile.getProfileDataBlob(), null, null, existProfile.getId());
+			operationLogService.saveOperationLog(OperationType.DELETE, "Profil silindi.", existingProfile.getProfileDataBlob(), null, null, existingProfile.getId());
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
-		return profileRepository.save(existProfile);
+		return profileRepository.save(existingProfile);
 	}
 	
 	public ProfileImpl update(ProfileImpl profile) {

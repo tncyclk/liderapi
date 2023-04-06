@@ -7,6 +7,8 @@ import java.util.Optional;
 import javax.annotation.PostConstruct;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import tr.org.lider.entities.OperationType;
@@ -39,8 +41,13 @@ public class ScriptService {
 		return scriptRepository.findById(id);
 	}
 	
-	public List<ScriptTemplate> list(){
-		return scriptRepository.findByDeletedOrderByCreateDateDesc(false);
+	public List<ScriptTemplate> listAll(){
+		return scriptRepository.findAllByDeleted(false);
+	}
+	
+	public Page<ScriptTemplate> list(int pageNumber, int pageSize){
+		PageRequest pageable = PageRequest.of(pageNumber - 1, pageSize);
+		return scriptRepository.findByDeletedOrderByCreateDateDesc(pageable, false);
 	}
 
 	public ScriptTemplate add(ScriptTemplate script) {
@@ -54,12 +61,12 @@ public class ScriptService {
 		return savedScript;
 	}
 
-	public ScriptTemplate delete(ScriptTemplate script) {
-		ScriptTemplate existScript = scriptRepository.findOne(script.getId());
-		existScript.setDeleted(true);
-		ScriptTemplate savedScript = scriptRepository.save(existScript);
+	public ScriptTemplate delete(Long id) {
+		ScriptTemplate existingScript = scriptRepository.findOne(id);
+		existingScript.setDeleted(true);
+		ScriptTemplate savedScript = scriptRepository.save(existingScript);
 		try {
-			operationLogService.saveOperationLog(OperationType.DELETE, "Betik Tanımı silindi.", existScript.getContents().getBytes());
+			operationLogService.saveOperationLog(OperationType.DELETE, "Betik Tanımı silindi.", existingScript.getContents().getBytes());
 		} catch (Exception e) {
 			e.printStackTrace();
 		}

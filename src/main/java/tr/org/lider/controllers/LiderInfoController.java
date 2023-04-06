@@ -23,7 +23,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
  * 
  */
 @RestController
-@RequestMapping("/lider-info")
+@RequestMapping("/api/lider-info")
 @Tag(name = "Lider Info", description = "Lider Info Rest Service")
 public class LiderInfoController {
 

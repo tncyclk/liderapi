@@ -7,14 +7,22 @@ import org.apache.directory.api.ldap.model.message.SearchScope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
-
+import org.springframework.web.bind.annotation.PutMapping;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import tr.org.lider.entities.OperationType;
 import tr.org.lider.ldap.LDAPServiceImpl;
 import tr.org.lider.ldap.LdapEntry;
@@ -29,8 +37,9 @@ import tr.org.lider.services.OperationLogService;
  *
  */
 
-@RestController()
-@RequestMapping("/liderConsole")
+@RestController
+@RequestMapping("/api/lider-console")
+@Tag(name = "console-user", description = "Console User Rest Service")
 public class LiderConsoleUserController {
 	
 	Logger logger = LoggerFactory.getLogger(LiderConsoleUserController.class);
@@ -52,9 +61,14 @@ public class LiderConsoleUserController {
 	
 //	LIDER_CONSOLE USER
 //	return lider console profile from ldap
-	@RequestMapping(method=RequestMethod.POST, value = "/profile")
-	@ResponseBody
-	public LdapEntry getLiderConsoleUser(Authentication authentication) {
+	
+	@Operation(summary = "Gets profile info", description = "", tags = { "console-user" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = "Return profile info"),
+			  @ApiResponse(responseCode = "417", description = "Could not get profil info. Unexpected error occured", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/profile")
+	public ResponseEntity<LdapEntry>  getLiderConsoleUser(Authentication authentication) {
 		String globalUserOu = configurationService.getUserLdapBaseDn();
 		LdapEntry liderConsoleUser = null;
 		String uid = authentication.getName();
@@ -63,10 +77,13 @@ public class LiderConsoleUserController {
 			List<LdapEntry> usersEntrylist = ldapService.findSubEntries(globalUserOu, filter,new String[] { "*" }, SearchScope.SUBTREE);
 			if(usersEntrylist.size()>0)
 			liderConsoleUser = usersEntrylist.get(usersEntrylist.size()-1);
+			
 		} catch (LdapException e) {
 			e.printStackTrace();
 		}
-		return liderConsoleUser;
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(liderConsoleUser);
 	}
 	
 	/**
@@ -74,26 +91,40 @@ public class LiderConsoleUserController {
 	 * @param selectedEntry
 	 * @return
 	 */
-	@RequestMapping(method=RequestMethod.POST, value = "/updatePassword",produces = MediaType.APPLICATION_JSON_VALUE)
-	@ResponseBody
-	public boolean updateLiderConsoleUserPassword(@RequestBody LdapEntry selectedEntry) {
+	@Operation(summary = "", description = "", tags = { "console-user" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = ""),
+			  @ApiResponse(responseCode = "417", description = " Unexpected error occured", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/update-password",produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<Boolean> updateLiderConsoleUserPassword(@RequestBody LdapEntry selectedEntry) {
 		try {
 		
 			if(!"".equals(selectedEntry.getUserPassword())){
 				ldapService.updateEntry(selectedEntry.getDistinguishedName(), "userPassword", "{ARGON2}" + customPasswordEncoder.encode(selectedEntry.getUserPassword()));
 			}
 			operationLogService.saveOperationLog(OperationType.CHANGE_PASSWORD,"Lider Arayüz kullanıcı parolası güncellendi.",null);
-			return true;
+			return ResponseEntity
+					.status(HttpStatus.OK)
+					.body(true);
 		} catch (LdapException e) {
 			e.printStackTrace();
-			return false;
+			return ResponseEntity
+					.status(HttpStatus.EXPECTATION_FAILED)
+					.body(false);
 		}
 	}
 	
 //	updated profile of lider console
-	@RequestMapping(method=RequestMethod.POST, value = "/updateProfile",produces = MediaType.APPLICATION_JSON_VALUE)
-	@ResponseBody
-	public LdapEntry updateLiderConsoleUser(@RequestBody LdapEntry selectedEntry) {
+	@Operation(summary = "Update console user password", description = "", tags = { "console-user" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = "Updated console user password"),
+			  @ApiResponse(responseCode = "417", description = "Could not update console user password. Unexpected error occured", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+//	@PostMapping(value = "/update-profile",produces = MediaType.APPLICATION_JSON_VALUE)
+	//@RequestMapping(method=RequestMethod.POST, value = "/updateProfile",produces = MediaType.APPLICATION_JSON_VALUE)
+	@PutMapping(value = "/update-profile",produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<LdapEntry> updateLiderConsoleUser(@RequestBody LdapEntry selectedEntry) {
 		try {
 			if(!"".equals(selectedEntry.getCn())){
 				ldapService.updateEntry(selectedEntry.getDistinguishedName(), "cn", selectedEntry.getCn());
@@ -113,21 +144,38 @@ public class LiderConsoleUserController {
 			selectedEntry = ldapService.findSubEntries(selectedEntry.getDistinguishedName(), "(objectclass=*)", new String[] {"*"}, SearchScope.OBJECT).get(0);
 			operationLogService.saveOperationLog(OperationType.UPDATE,"Lider Arayüz kullanıcı bilgileri güncellendi.",null);
 
-			return selectedEntry;
+			return ResponseEntity
+					.status(HttpStatus.OK)
+					.body(selectedEntry);
+					
 		} catch (LdapException e) {
 			e.printStackTrace();
-			return null;
+			HttpHeaders headers = new HttpHeaders();
+			return ResponseEntity.
+					status(HttpStatus.EXPECTATION_FAILED).
+					headers(headers)
+					.build();
 		}
 	}
 	
-	@RequestMapping(method=RequestMethod.POST, value = "/matchesPassword",produces = MediaType.APPLICATION_JSON_VALUE)
-	@ResponseBody
-	public boolean matchesLiderConsoleUserPassword(LdapEntry selectedEntry) {
+	@Operation(summary = "Matching password", description = "", tags = { "console-user" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = "Passwords matched"),
+			  @ApiResponse(responseCode = "417", description = "Could not match password. Unexpected error occured", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/matches-password",produces = MediaType.APPLICATION_JSON_VALUE)
+	//@RequestMapping(method=RequestMethod.POST, value = "/matchesPassword",produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<Boolean> matchesLiderConsoleUserPassword(LdapEntry selectedEntry) {
 		LdapEntry ldapUserEntry= getUserFromLdap(selectedEntry.getUid());
 		if(!"".equals(selectedEntry.getUserPassword())){
-			return encoder.matches(selectedEntry.getUserPassword(), ldapUserEntry.getUserPassword());
-		} else {
-			return false;
+			return ResponseEntity
+					.status(HttpStatus.OK)
+					.body(encoder.matches(selectedEntry.getUserPassword(), ldapUserEntry.getUserPassword()));					
+		} 
+		else {
+			return ResponseEntity
+					.status(HttpStatus.EXPECTATION_FAILED)
+					.body(false);
 		}
 	}
 	
@@ -142,6 +190,7 @@ public class LiderConsoleUserController {
 			}
 		} catch (Exception e) {
 			logger.error(e.getMessage());
+			
 		}
 		return ldapEntry;
 	}

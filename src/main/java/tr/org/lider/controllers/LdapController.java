@@ -7,7 +7,12 @@ import org.apache.directory.api.ldap.model.exception.LdapException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
@@ -15,6 +20,12 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import tr.org.lider.ldap.LDAPServiceImpl;
 import tr.org.lider.ldap.LdapEntry;
 import tr.org.lider.ldap.LdapSearchFilterAttribute;
@@ -30,7 +41,8 @@ import tr.org.lider.services.ConfigurationService;
  *
  */
 @RestController()
-@RequestMapping("/lider/ldap")
+@RequestMapping("/api/lider/ldap")
+@Tag(name = "ldap-service", description = "Ldap Rest Service")
 public class LdapController {
 
 	Logger logger = LoggerFactory.getLogger(LdapController.class);
@@ -353,9 +365,13 @@ public class LdapController {
 	 * @param value
 	 * @return
 	 */
-	@RequestMapping(method=RequestMethod.POST ,value = "/searchEntry")
-	@ResponseBody
-	public List<LdapEntry> searchEntry(
+	@Operation(summary = "Gets ldap list by filter", description = "", tags = { "ldap-service" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = "Returns ldap list by filter"),
+			  @ApiResponse(responseCode = "417",description = "Could not get Ldap list by filter. Unexpected error occured",
+		  		 content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/search-entry")
+	public ResponseEntity<List<LdapEntry>> searchEntry(
 			@RequestParam(value="searchDn", required=false) String searchDn,
 			@RequestParam(value="key", required=true) String key, 
 			@RequestParam(value="value", required=true) String value) {
@@ -370,8 +386,16 @@ public class LdapController {
 			results = ldapService.search(searchDn,filterAttributes, new String[] {"*"});
 		} catch (LdapException e) {
 			e.printStackTrace();
+			HttpHeaders headers = new HttpHeaders();
+    		return ResponseEntity
+    				.status(HttpStatus.EXPECTATION_FAILED)
+    				.headers(headers)
+    				.build();
 		}
-		return results ;
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(results);
+				 
 	}
 	
 //	//add new group and add selected attributes

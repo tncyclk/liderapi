@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import tr.org.lider.services.AuthenticationService;
 
-@RestController()
+@RestController
 @RequestMapping("/test")
 public class TestController {
 

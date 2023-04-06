@@ -3,7 +3,7 @@ target/
 .mvn/*
 !**/src/main/**
 !**/src/test/**
-
+*.orig
 ### STS ###
 .apt_generated
 .classpath

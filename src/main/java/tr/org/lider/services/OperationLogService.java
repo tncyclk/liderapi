@@ -71,7 +71,7 @@ public class OperationLogService {
 		operationLogImpl.setProfileId(profileId);
 		operationLogImpl.setPolicyId(policyId);
 
-		if (!AuthenticationService.isLogged()) {
+		if (AuthenticationService.isLogged()) {
 			String userId = AuthenticationService.getDn();
 			operationLogImpl.setUserId(userId);
 		}

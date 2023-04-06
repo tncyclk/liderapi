@@ -530,7 +530,7 @@ public class ConfigurationService {
 	
 	public String getPardusRepoComponent() {
 		if(getConfigParams().getPardusRepoComponent() == null || getConfigParams().getPardusRepoComponent().equals("")) {
-			return "ondokuz main contrib non-free";
+			return "yirmibir main contrib non-free";
 		}
 		return getConfigParams().getPardusRepoComponent();
 	}

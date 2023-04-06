@@ -83,6 +83,7 @@ public class AgentService {
 	public Page<AgentImpl> findAllAgents(
 			int pageNumber,
 			int pageSize,
+			Optional<String> sessionReportType,
 			Optional<Date> registrationStartDate,
 			Optional<Date> registrationEndDate,
 			Optional<String> status,
@@ -94,7 +95,8 @@ public class AgentService {
 			Optional<String> model,
 			Optional<String> processor,
 			Optional<String> osVersion,
-			Optional<String> agentVersion) {
+			Optional<String> agentVersion,
+			Optional<String> diskType) {
 		
 		List<String> listOfOnlineUsers = new ArrayList<String>();
 		if(!status.get().equals("ALL")) {
@@ -114,9 +116,30 @@ public class AgentService {
 				e.printStackTrace();
 			}
 		}
+		if(sessionReportType.isPresent()) {
+			if(sessionReportType.get().equals("LAST_ONE_MONTH_NO_SESSIONS") 
+					|| sessionReportType.get().equals("LAST_TWO_MONTHS_NO_SESSIONS") 
+					|| sessionReportType.get().equals("LAST_THREE_MONTHS_NO_SESSIONS")) {
+				List<LdapEntry> listOfAgents = new ArrayList<LdapEntry>();
+				try {
+		
+					listOfAgents = ldapService.findSubEntries(
+							configurationService.getAgentLdapBaseDn(), "(objectclass=pardusDevice)", new String[] { "*" }, SearchScope.SUBTREE);
+		
+					for (LdapEntry ldapEntry : listOfAgents) {
+						if(ldapEntry.isOnline()) {
+							listOfOnlineUsers.add(ldapEntry.getUid());
+						}
+					}
+				} catch (LdapException e) {
+					e.printStackTrace();
+				}
+			}
+		}
 		Page<AgentImpl> listOfAgentsCB = agentInfoCB.filterAgents(
 				pageNumber, 
 				pageSize, 
+				sessionReportType,
 				registrationStartDate, 
 				registrationEndDate, 
 				status,
@@ -129,7 +152,9 @@ public class AgentService {
 				processor, 
 				osVersion, 
 				agentVersion, 
-				listOfOnlineUsers);
+				diskType,
+				listOfOnlineUsers
+				);
 		for (int i = 0; i < listOfAgentsCB.getContent().size(); i++) {
 			if(messagingService.isRecipientOnline(listOfAgentsCB.getContent().get(i).getJid())) {
 				listOfAgentsCB.getContent().get(i).setIsOnline(true);
@@ -184,6 +209,10 @@ public class AgentService {
 	
 	public int getCountByTodayLastLogin(Date startDate) {
 		return agentRepository.getCountByLastLoginToday(startDate);
+	}
+	
+	public List<String> getDiskType() {
+		return agentRepository.getPropertyValueByName("diskType");
 	}
 	
 	

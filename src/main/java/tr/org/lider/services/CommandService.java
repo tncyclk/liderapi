@@ -55,6 +55,17 @@ public class CommandService {
 		return 	commandRepository.save(commandImpl);
 	}
 
+	public List<CommandImpl> findByPolicyAndByDn(Long id, String dn) {
+		return 	commandRepository.findByPolicyAndDn(id, dn);
+	}
+	
+	public List<CommandImpl> findAllPolicyByDn(String dn) {
+		return commandRepository. findAllPolicyByDn(dn);
+	}
+	
+	
+	
+	
 	// command execution CRUD operations
 	public CommandExecutionImpl getCommandExecution(Long id) {
 		return commandExecutionRepository.findOne(id);
@@ -127,7 +138,7 @@ public class CommandService {
 		List<CommandImpl> commandImpl = commandRepository.findCommandAllByPolicy();
 		return commandImpl.size();
 	}
-	
+
 	public Long count() {
 		return commandExecutionRepository.count();
 	}

@@ -3,6 +3,11 @@ package tr.org.lider.controllers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -11,6 +16,12 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.jcraft.jsch.Session;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import tr.org.lider.services.RemoteSshService;
 
 /**
@@ -19,8 +30,10 @@ import tr.org.lider.services.RemoteSshService;
  * @author M. Edip YILDIZ
  *
  */
-@RestController()
-@RequestMapping("/remoteSsh")
+@RestController
+@RequestMapping("/api/remote-ssh")
+//@RequestMapping("/remoteSsh")
+@Tag(name = "", description = "" )
 public class RemoteSshController {
 	
 	private Integer SSH_CON_OK= 1;
@@ -31,9 +44,14 @@ public class RemoteSshController {
 	
 	Logger logger = LoggerFactory.getLogger(RemoteSshService.class);
 	
-	@RequestMapping(method=RequestMethod.POST ,value = "/executeSshCommand")
-	@ResponseBody
-	public String executeSshCommand(
+	//@RequestMapping(method=RequestMethod.POST ,value = "/executeSshCommand")
+	@Operation(summary = "", description = "", tags = { "" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = ""),
+			  @ApiResponse(responseCode = "417", description = "", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/execute-ssh-command", produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<String> executeSshCommand(
 				@RequestParam(value="host") String host, 
 				@RequestParam(value="username") String user,	
 				@RequestParam(value="password") String password,
@@ -45,15 +63,26 @@ public class RemoteSshController {
 	    	sshService.setPassword(password);
 	    	try {
 				 String result =sshService.executeCommand(command);
-				 return result;
+				 return ResponseEntity
+						 .status(HttpStatus.OK)
+						 .body(result);
 			} catch (Exception e) {
 				e.printStackTrace();
-				return e.getMessage();
+				HttpHeaders headers = new HttpHeaders();
+	    		return ResponseEntity
+	    				.status(HttpStatus.EXPECTATION_FAILED)
+	    				.headers(headers)
+	    				.build();
 			}
 	}
-	@RequestMapping(method=RequestMethod.POST ,value = "/checkSSHConnection")
-	@ResponseBody
-	public Integer checkSSHConnection(
+	//@RequestMapping(method=RequestMethod.POST ,value = "/checkSSHConnection")
+	@Operation(summary = "", description = "", tags = { "" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = ""),
+			  @ApiResponse(responseCode = "417", description = "", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/check-ssh-connection")
+	public ResponseEntity<Integer> checkSSHConnection(
 			@RequestParam(value="host") String host, 
 			@RequestParam(value="username") String user,	
 			@RequestParam(value="password") String password
@@ -66,15 +95,22 @@ public class RemoteSshController {
 		try {
 			Session session =sshService.getSession();
 			if(session !=null) {
-				return SSH_CON_OK;
+				return ResponseEntity
+						.status(HttpStatus.OK)
+						.body(SSH_CON_OK);
+						
 			}
 			else {
-				return SSH_CON_FAIL;
+				return ResponseEntity
+						.status(HttpStatus.EXPECTATION_FAILED)
+						.body(SSH_CON_FAIL);
 			}
 			
 		} catch (Exception e) {
 			e.printStackTrace();
-			return SSH_CON_FAIL;
+			return ResponseEntity
+					.status(HttpStatus.EXPECTATION_FAILED)
+					.body(SSH_CON_FAIL);
 		}
 	}
 }

@@ -11,10 +11,12 @@ import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -58,6 +60,7 @@ import org.apache.directory.ldap.client.api.LdapConnection;
 import org.apache.directory.ldap.client.api.LdapConnectionConfig;
 import org.apache.directory.ldap.client.api.LdapConnectionPool;
 import org.apache.directory.ldap.client.api.PoolableLdapConnectionFactory;
+import org.hibernate.validator.constraints.Length;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -65,8 +68,10 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import tr.org.lider.entities.CommandImpl;
+import tr.org.lider.messaging.enums.DomainType;
 import tr.org.lider.messaging.messages.XMPPClientImpl;
 import tr.org.lider.security.User;
+import tr.org.lider.services.AdService;
 import tr.org.lider.services.AuthenticationService;
 import tr.org.lider.services.CommandService;
 import tr.org.lider.services.ConfigurationService;
@@ -76,9 +81,12 @@ import tr.org.lider.services.ConfigurationService;
  * 
  */
 
+
+
 @Service
 @Qualifier("ldapImpl")
 public class LDAPServiceImpl implements ILDAPService {
+	
 
 	private final static Logger logger = LoggerFactory.getLogger(LDAPServiceImpl.class);
 	private final static String configOLCDN = "olcDatabase={1}mdb,cn=config";
@@ -91,6 +99,12 @@ public class LDAPServiceImpl implements ILDAPService {
 
 	@Autowired
 	private CommandService commandService;
+	
+	@Autowired
+	private ConfigurationService configService;
+	
+	@Autowired
+	private AdService adService;
 	
 	//	@Autowired
 	//	private Environment env;
@@ -1213,9 +1227,7 @@ public class LDAPServiceImpl implements ILDAPService {
 		}
 		return treeList;
 	}
-
-
-
+	
 	public void createTreeList(LdapEntry entry, List<LdapEntry> treeList) {
 
 		if(entry.getType()!=null && entry.getType().equals(DNType.USER)) {
@@ -1497,21 +1509,29 @@ public class LDAPServiceImpl implements ILDAPService {
 			//CASE 2 if moved entry is user update memberships
 			//CASE 3 if moved entry is agent update memberships
 			LdapEntry entry = getEntryDetail(sourceDN);
-			if(entry.getType().equals(DNType.USER)) {
-				String newUserDN = "uid=" + entry.getUid() + "," + destinationDN;
-				List<LdapEntry> subEntries = search("member", sourceDN, new String[] {"*"});
-				for (LdapEntry groupEntry : subEntries) {
-					updateEntryAddAtribute(groupEntry.getDistinguishedName(), "member", newUserDN);
-					updateEntryRemoveAttributeWithValue(groupEntry.getDistinguishedName(), "member", sourceDN);
+			if (entry != null) {
+				
+				if(entry.getType().equals(DNType.USER)) {
+					String newUserDN = "uid=" + entry.getUid() + "," + destinationDN;
+					List<LdapEntry> subEntries = search("member", sourceDN, new String[] {"*"});
+					for (LdapEntry groupEntry : subEntries) {
+						updateEntryAddAtribute(groupEntry.getDistinguishedName(), "member", newUserDN);
+						updateEntryRemoveAttributeWithValue(groupEntry.getDistinguishedName(), "member", sourceDN);
+					}
+				} else if(entry.getType().equals(DNType.AHENK)) {
+					String newAgentDN = "cn=" + entry.getCn() + "," + destinationDN;
+					List<LdapEntry> subEntries = search("member", sourceDN, new String[] {"*"});
+					if (subEntries.size() > 0 )
+					{
+						for (LdapEntry ldapEntry : subEntries) {
+							updateEntryAddAtribute(ldapEntry.getDistinguishedName(), "member", newAgentDN);
+							updateEntryRemoveAttributeWithValue(ldapEntry.getDistinguishedName(), "member", sourceDN);
+						}
+					}
 				}
-			} else if(entry.getType().equals(DNType.AHENK)) {
-				String newAgentDN = "cn=" + entry.getCn() + "," + destinationDN;
-				List<LdapEntry> subEntries = search("member", sourceDN, new String[] {"*"});
-				for (LdapEntry ldapEntry : subEntries) {
-					updateEntryAddAtribute(ldapEntry.getDistinguishedName(), "member", newAgentDN);
-					updateEntryRemoveAttributeWithValue(ldapEntry.getDistinguishedName(), "member", sourceDN);
-				}
+				
 			}
+				
 			connection.move(sourceDN,destinationDN);
 		} catch (Exception e) {
 			logger.error(e.getMessage(), e);
@@ -2532,7 +2552,165 @@ public class LDAPServiceImpl implements ILDAPService {
 		else 
 			return false;
 	}
+	
+	
+	public List<String> getParentsDnOfLdapEntry (LdapEntry selectedEntry){
+		List <String> parentDnList = new ArrayList<>();
+		LdapEntry ldapEntry = selectedEntry;
+		try {
+			String filter= "(objectClass=*)";
+			List<LdapEntry> ldapEntries  = findSubEntries(ldapEntry.getDistinguishedName(), filter,
+					new String[] { "*" }, SearchScope.OBJECT);
+			
+			if(ldapEntries.size()>0) {
+				if(ldapEntries.get(0).getAttributesMultiValues().get("memberOf") != null) {
+					for(String memberOf : ldapEntries.get(0).getAttributesMultiValues().get("memberOf")) {
+						parentDnList.add(memberOf);
+					}
+				}
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		return parentDnList;
+	}
+	
+	public List<String> getGroupInGroups(LdapEntry selectedEntry) {
+		List<String> totalGroupList= new ArrayList<>();
+		GroupLinkedList groupList = new GroupLinkedList();
+		groupList.append(selectedEntry.getDistinguishedName(), false);
+	    try {
+	    	if(!groupList.head.equals(null)) {
+	    		GroupLinkedList.Node groupListTemp = groupList.head;
+	    		while(!groupListTemp.viseted && groupListTemp!= null)  {
+	    			if(groupListTemp.viseted) {
+	    				if (groupListTemp.next == null) {
+			        		break;
+			        	}
+	    				groupListTemp = groupListTemp.next;
+		        		continue;
+	    			}
+	    			else {
+		    			List<LdapEntry> subGroupList = getMembersInGroupAsGroup(groupListTemp.currentDn);
+		    			if (subGroupList != null) {
+	                        for (LdapEntry subGroup : subGroupList) {
+	                        	GroupLinkedList.Node fnode = groupList.head;
+	    		        		while(fnode != null) {
+	    		        			if(fnode.currentDn.equals(subGroup.getDistinguishedName())) {
+	    		        				break;
+	    		        			}
+	    		        			if (fnode.next == null) {
+	    		        				groupList.append(subGroup.getDistinguishedName(), false);
+	    		    	        		break;
+	    		    	        	}
+	    		        			fnode = fnode.next;
+	    		        		}
+	                        }
+	                    }
+		    			groupList.updateValue(groupListTemp, false, true);
+		    			if (!totalGroupList.contains(groupListTemp.currentDn)) {
+							totalGroupList.add(groupListTemp.currentDn);
+						}
+		    			if (groupListTemp.next == null) {
+		    				break;
+		    			}
+		    			groupListTemp = groupListTemp.next;
+	    			}
+	    		}
+	    	}
+	    } catch (Exception e) {
+	        e.printStackTrace();
+	    }
+	    return totalGroupList;
+	}
+	
+	public List<LdapEntry> getMembersInGroupAsGroup(String disDn) {
+		List<LdapEntry> ldapEntry = null;
+		List<LdapEntry> targetEntries= new ArrayList<>();
+		List<LdapSearchFilterAttribute> filterAttributesList = new ArrayList<LdapSearchFilterAttribute>();
+		if(configService.getDomainType().equals(DomainType.ACTIVE_DIRECTORY)) {
+			filterAttributesList.add(new LdapSearchFilterAttribute("objectclass", "group", SearchFilterEnum.EQ));
+			filterAttributesList.add(new LdapSearchFilterAttribute("distinguishedName", disDn, SearchFilterEnum.EQ));
+			String baseDn = adService.getADDomainName();
+			try {
+				ldapEntry = adService.search(baseDn, filterAttributesList, new String[] {"*"});
+			} catch (LdapException e1) {
+				// TODO Auto-generated catch block
+				e1.printStackTrace();
+			}
+			if(ldapEntry != null && ldapEntry.get(0).getType().equals(DNType.GROUP)) {
+				String[] members= ldapEntry.get(0).getAttributesMultiValues().get("member");
+				if(members.length > 0) {
+					for (int i = 0; i < members.length; i++) {
+						String dn = members[i];
+						try {
+							List<LdapEntry> member = findSubEntries(dn, "(objectclass=group)", new String[] { "*" }, SearchScope.OBJECT);
+							if(member!=null && member.size()>0) {
+								targetEntries.add(member.get(0));
+							}
+						} catch (LdapException e) {
+							// TODO Auto-generated catch block
+							e.printStackTrace();
+						}
+					}
+				}
+			}
+		}
+		else if(configService.getDomainType().equals(DomainType.LDAP) || configService.getDomainType().equals(DomainType.NONE)) {
+			filterAttributesList.add(new LdapSearchFilterAttribute("objectClass", "groupOfNames", SearchFilterEnum.EQ));
+			filterAttributesList.add(new LdapSearchFilterAttribute("entryDN", disDn, SearchFilterEnum.EQ));
+			try {
+				ldapEntry = search(configurationService.getLdapRootDn(), filterAttributesList, new String[] {"*"});
+			} catch (LdapException e1) {
+				// TODO Auto-generated catch block
+				e1.printStackTrace();
+			}
+			if(ldapEntry != null && ldapEntry.get(0).getType().equals(DNType.GROUP)) {
+				String[] members= ldapEntry.get(0).getAttributesMultiValues().get("member");
+				for (int i = 0; i < members.length; i++) {
+					String dn = members[i];
+					try {
+						List<LdapEntry> member = findSubEntries(dn, "(objectclass=groupOfNames)", new String[] { "*" }, SearchScope.OBJECT);
+						if(member!=null && member.size()>0) {
+							targetEntries.add(member.get(0));
+						}
+					} catch (LdapException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				}
+			}
+		}
+		return targetEntries; 
+			}
 
-
-}
+	public List <LdapEntry> getLdapDnStringToEntry(List <String> groupDnList){
+		List<LdapEntry> groupLdapEtries = new ArrayList<LdapEntry>();
+		if(groupDnList.size()>0) {
+			for(int i = 0; i < groupDnList.size(); i++) {
+				List<LdapSearchFilterAttribute> filterAttributesList = new ArrayList<LdapSearchFilterAttribute>();
+				filterAttributesList.add(new LdapSearchFilterAttribute("objectClass", "groupOfNames", SearchFilterEnum.EQ));
+				filterAttributesList.add(new LdapSearchFilterAttribute("entryDN", groupDnList.get(i), SearchFilterEnum.EQ));
+				try {
+					List<LdapEntry> search = search(configurationService.getLdapRootDn(), filterAttributesList, new String[] {"*"});
+					groupLdapEtries.add(search.get(0));
+				} catch (LdapException e1) {
+					// TODO Auto-generated catch block
+					e1.printStackTrace();
+				}
+			}
+		}
+		return groupLdapEtries;
+	}
+	
+	public Boolean isExistInLdapEntry(List <LdapEntry> entryList, LdapEntry entry) {
+			for (LdapEntry eachEntry : entryList) {
+				if(eachEntry.getDistinguishedName().equals(entry.getDistinguishedName())) {
+					return true;
+				}
+			}
+		return false;
+	}
+} 
+	
 

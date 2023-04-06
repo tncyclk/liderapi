@@ -2,6 +2,7 @@ package tr.org.lider.controllers;
 
 import java.util.Arrays;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -12,8 +13,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -21,19 +25,31 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import tr.org.lider.entities.ForgotPasswordImpl;
+import tr.org.lider.entities.OperationType;
 import tr.org.lider.ldap.LDAPServiceImpl;
 import tr.org.lider.ldap.LdapEntry;
 import tr.org.lider.services.ConfigurationService;
 import tr.org.lider.services.EmailService;
 import tr.org.lider.services.ForgotPasswordService;
+import tr.org.lider.services.OperationLogService;;
 
 /**
  * 
  * @author Hasan Kara
  */
 @RestController
-@RequestMapping(value = "/forgot_password")
+@RequestMapping(value = "/api/forgot-password")
+@Tag(name = "forgot-password", description = "Forgot Password Rest Service")
 public class ForgotPasswordController {
 
 	Logger logger = LoggerFactory.getLogger(ForgotPasswordController.class);
@@ -49,6 +65,9 @@ public class ForgotPasswordController {
 
 	@Autowired
 	private ForgotPasswordService forgotPasswordService;
+	
+	@Autowired
+	private OperationLogService operationLogService;
 
 	@Value("${lider.url}")
 	private String liderURL;
@@ -57,6 +76,13 @@ public class ForgotPasswordController {
 	 * creates a uuuid for password change and sends an email to user with a link.
 	 * Link is valid for 60 minutes.
 	 */
+	@Operation(summary = "Sending email to confirm password", description = "", tags = { "forgot-password" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = "The link has been successfully sent to your email."),
+			  @ApiResponse(responseCode = "404", description = "Email information could not be verified. Not found", 
+			    content = @Content(schema = @Schema(implementation = String.class))),
+			  @ApiResponse(responseCode = "417", description = "An unexpected error occurred while sending the email", 
+			    content = @Content(schema = @Schema(implementation = String.class)))})
 	@PostMapping(value = "/")
 	public ResponseEntity<?> forgotPasswordSendLink(@RequestBody Map<String,String> params) {
 		//get full current url of lider server to send reset link to user
@@ -84,6 +110,11 @@ public class ForgotPasswordController {
 			}
 		} catch (Exception e) {
 			e.printStackTrace();
+			HttpHeaders headers = new HttpHeaders();
+			return ResponseEntity.
+					status(HttpStatus.EXPECTATION_FAILED).
+					headers(headers)
+					.build();
 		}
 		if(ldapEntry!=null) {
 			if(!ldapEntry.getAttributes().containsKey("mail")) {
@@ -114,7 +145,12 @@ public class ForgotPasswordController {
 	 * checks if user password change link is still valid
 	 * 
 	 */
-	@RequestMapping(value = "/id/{uuid}", method = { RequestMethod.GET })
+	@Operation(summary = "Password reset", description = "", tags = { "forgot-password" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = "Password reset successfully"),
+			  @ApiResponse(responseCode = "417", description = "Could not reset password. Unexpected error occured", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@GetMapping(value = "/id/{uuid}")
 	public ResponseEntity<?> passwordResetPage(@PathVariable String uuid) {
 		
 		Optional<ForgotPasswordImpl> fp = forgotPasswordService.findAllByUUID(uuid);
@@ -138,7 +174,12 @@ public class ForgotPasswordController {
 	 * changes user password
 	 * 
 	 */
-	@RequestMapping(value = "/reset/{uuid}", method = { RequestMethod.POST })
+	@Operation(summary = "Password reset and save", description = "", tags = { "forgot-password" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = "Password reset and save successful"),
+			  @ApiResponse(responseCode = "417", description = "Password reset and save failed. Unexpected error occured", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/reset/{uuid}")
 	public ResponseEntity<?> passwordResetSave(@PathVariable String uuid, 
 			@RequestBody Map<String,String> params) {
 		String password = "";
@@ -179,6 +220,11 @@ public class ForgotPasswordController {
 					}
 				} catch (Exception e) {
 					e.printStackTrace();
+					HttpHeaders headers = new HttpHeaders();
+					return ResponseEntity.
+							status(HttpStatus.EXPECTATION_FAILED).
+							headers(headers)
+							.build();
 				}
 				try {
 					//change password history
@@ -194,6 +240,20 @@ public class ForgotPasswordController {
 				}
 				//delete forgot password key
 				forgotPasswordService.deleteByUsername(fp.get().getUsername());
+				
+				Map<String, Object> requestData = new HashMap<String, Object>();
+				requestData.put("username",ldapEntry.getDistinguishedName());
+				requestData.put("email",ldapEntry.getMail());
+				ObjectMapper dataMapper = new ObjectMapper();
+				String jsonString = null ; 
+				try {
+					jsonString = dataMapper.writeValueAsString(requestData);
+				} catch (JsonProcessingException e1) {
+					logger.error("Error occured while mapping request data to json. Error: " +  e1.getMessage());
+				}
+				String log = ldapEntry.getDistinguishedName() + " password has been changed";
+				operationLogService.saveOperationLog(OperationType.CHANGE_PASSWORD, log, jsonString.getBytes(), null, null, null);
+//				
 				return new ResponseEntity<List<String>>(Arrays.asList("Parolanız başarılı bir şekilde yenilendi. Şimdi giriş yapabilirsiniz."), 
 						HttpStatus.OK);
 			}

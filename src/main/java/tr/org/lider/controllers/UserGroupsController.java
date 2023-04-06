@@ -1,5 +1,6 @@
 package tr.org.lider.controllers;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -15,28 +16,47 @@ import org.apache.directory.api.ldap.model.message.SearchScope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.annotation.Secured;
 import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.fasterxml.jackson.core.JsonGenerationException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import tr.org.lider.entities.CommandExecutionImpl;
+import tr.org.lider.entities.CommandImpl;
+import tr.org.lider.entities.OperationType;
 import tr.org.lider.ldap.DNType;
 import tr.org.lider.ldap.LDAPServiceImpl;
 import tr.org.lider.ldap.LdapEntry;
 import tr.org.lider.ldap.LdapSearchFilterAttribute;
 import tr.org.lider.ldap.SearchFilterEnum;
+import tr.org.lider.models.PolicyResponse;
 import tr.org.lider.services.ConfigurationService;
+import tr.org.lider.services.OperationLogService;
+import tr.org.lider.models.PolicyExecutionRequestImpl;
+import tr.org.lider.services.PolicyService;
+
 
 /**
  * Controller for user groups operations
@@ -46,26 +66,47 @@ import tr.org.lider.services.ConfigurationService;
  */
 @Secured({"ROLE_ADMIN", "ROLE_USER_GROUPS" })
 @RestController
-@RequestMapping("/lider/user_groups")
+@RequestMapping("/api/lider/user-groups")
+@Tag(name = "User Groups", description = "User Groups Rest Service" )
 public class UserGroupsController {
 	Logger logger = LoggerFactory.getLogger(UserGroupsController.class);
 
+	@Autowired
+	private OperationLogService operationLogService;
+	
 	@Autowired
 	private LDAPServiceImpl ldapService;
 	
 	@Autowired
 	private ConfigurationService configurationService;
 	
+	@Autowired
+	private PolicyService policyService;
+	
 	//gets tree of groups of names which just has user members
-	@RequestMapping(value = "/getGroups")
-	public List<LdapEntry> getLdapUserGroupsTree() {
+	@Operation(summary = "Gets tree of groups", description = "", tags = { "user-groups" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = "Returns tree of groups"),
+			  @ApiResponse(responseCode = "417", description = "Could not get  tree of groups. Unexpected error occurred", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/groups")
+	//@RequestMapping(value = "/getGroups")
+	public ResponseEntity<List<LdapEntry>> getLdapUserGroupsTree() {
 		List<LdapEntry> result = new ArrayList<LdapEntry>();
 		result.add(ldapService.getLdapUsersGroupTree());
-		return result;
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(result);
 	}
 	
-	@RequestMapping(value = "/getOuDetails")
-	public List<LdapEntry> getOuDetails(LdapEntry selectedEntry) {
+	@Operation(summary = "Gets the ou detail of the selected entry.", description = "", tags = { "user-groups" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = "Returns the ou detail of the selected entry. Successful"),
+			  @ApiResponse(responseCode = "417", description = "Could not get ou detail of the selected entry. Unexpected error occurred", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/ou-details")
+	//@RequestMapping(value = "/getOuDetails")
+	public ResponseEntity<List<LdapEntry>> getOuDetails(LdapEntry selectedEntry) {
 		List<LdapEntry> subEntries = null;
 		try {
 			subEntries = ldapService.findSubEntries(selectedEntry.getUid(), "(objectclass=*)",
@@ -75,14 +116,25 @@ public class UserGroupsController {
 		}
 		Collections.sort(subEntries);
 		selectedEntry.setChildEntries(subEntries);
-		return subEntries;
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(subEntries);
+				
 	}
 	
-	@RequestMapping(value = "/getUsers")
-	public List<LdapEntry> getUsers() {
+	@Operation(summary = "Gets user of groups", description = "", tags = { "user-groups" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = "Returns user of groups.Successful"),
+			  @ApiResponse(responseCode = "417", description = "Could not get user of groups.Unexpected error occured", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/users")
+	//@RequestMapping(value = "/getUsers")
+	public ResponseEntity<List<LdapEntry>> getUsers() {
 		List<LdapEntry> retList = new ArrayList<LdapEntry>();
 		retList.add(ldapService.getLdapUserTree());
-		return retList;
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(retList);
 	}
 	
 	/**
@@ -90,8 +142,14 @@ public class UserGroupsController {
 	 * @param selectedEntryArr
 	 * @return
 	 */
-	@RequestMapping(value = "/getUsersUnderOU", method = { RequestMethod.POST })
-	public List<LdapEntry> getUsersUnderOU(HttpServletRequest request,Model model, @RequestBody LdapEntry[] selectedEntryArr) {
+	@Operation(summary = "Gets users under ou", description = "", tags = { "user-groups" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = ""),
+			  @ApiResponse(responseCode = "400", description = "Could not users under ou. Unexpected error occured", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/users-under-ou")
+	//@RequestMapping(value = "/getUsersUnderOU", method = { RequestMethod.POST })
+	public ResponseEntity<List<LdapEntry>> getUsersUnderOU(HttpServletRequest request,Model model, @RequestBody LdapEntry[] selectedEntryArr) {
 		List<LdapEntry> userList=new ArrayList<>();
 		for (LdapEntry ldapEntry : selectedEntryArr) {
 			List<LdapSearchFilterAttribute> filterAttributes = new ArrayList<LdapSearchFilterAttribute>();
@@ -115,12 +173,20 @@ public class UserGroupsController {
 				e.printStackTrace();
 			}
 		}
-		return userList;
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(userList);
 	}
 	
 //	add user to existing group by member list
-	@RequestMapping(method=RequestMethod.POST ,value = "/group/existing", produces = MediaType.APPLICATION_JSON_VALUE)
-	public LdapEntry addUserToExistingGroup(@RequestParam(value="groupDN") String groupDN,
+	@Operation(summary = "", description = "", tags = { "user-groups" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = ""),
+			  @ApiResponse(responseCode = "400", description = "", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/group/existing" , produces = MediaType.APPLICATION_JSON_VALUE)
+	//@RequestMapping(method=RequestMethod.POST ,value = "/group/existing", produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<LdapEntry> addUserToExistingGroup(@RequestParam(value="groupDN") String groupDN,
 			@RequestParam(value = "checkedList[]", required=true) String[] checkedList) {
 		LdapEntry entry;
 		try {
@@ -145,13 +211,26 @@ public class UserGroupsController {
 			entry = ldapService.getEntryDetail(groupDN);
 		} catch (LdapException e) {
 			System.out.println("Error occured while adding new group.");
-			return null;
+			HttpHeaders headers = new HttpHeaders();
+    		return ResponseEntity
+    				.status(HttpStatus.EXPECTATION_FAILED)
+    				.headers(headers)
+    				.build();
 		}
-		return entry;
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(entry);
+				
 	}
 	
 //	Add user list to existing group by checked node list
-	@RequestMapping(method=RequestMethod.POST ,value = "/group/existing/addUser", produces = MediaType.APPLICATION_JSON_VALUE)
+	@SuppressWarnings("null")
+	@Operation(summary = "", description = "", tags = { "user-groups" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = ""),
+			  @ApiResponse(responseCode = "400", description = "", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/group/existing/add-user" , produces = MediaType.APPLICATION_JSON_VALUE)
 	public ResponseEntity<?> addUsersToExistingGroup(@RequestBody Map<String, String> params) {
 		LdapEntry entry;
 		ObjectMapper mapper = new ObjectMapper();
@@ -165,11 +244,24 @@ public class UserGroupsController {
 		List<LdapEntry> directories = new ArrayList<>();
 		
 		for (LdapEntry ldapEntry : entries) {
-			if(ldapEntry.getType().equals(DNType.USER)) {
+			if(ldapEntry.getType().equals(DNType.USER) || ldapEntry.getType().equals(DNType.GROUP)) {
 				users.add(ldapEntry);
 			}
 		}
-		
+		entry = ldapService.getEntryDetail(params.get("groupDN"));
+		List<PolicyResponse> policyParentDn= new ArrayList<>();
+		policyParentDn = policyService.getPoliciesForGroup(entry.getDistinguishedName());
+		for(LdapEntry ldapEntry : entries) {
+			for (PolicyResponse policy : policyParentDn) {
+				List<String> tempDnList= new ArrayList<>();
+				tempDnList.add(ldapEntry.getDistinguishedName());
+				
+				PolicyExecutionRequestImpl executePolicyTemp = new PolicyExecutionRequestImpl(policy.getPolicyImpl().getId(), 
+						tempDnList, policy.getCommandImpl().getDnType(), null, null, null);
+				
+				policyService.executePolicy(executePolicyTemp);
+			}
+		}
 		for (LdapEntry ldapEntry : entries) {
 			Boolean hasParentChecked = false;
 			for (LdapEntry entryTemp : entries) {
@@ -198,32 +290,80 @@ public class UserGroupsController {
 			entry = ldapService.getEntryDetail(params.get("groupDN"));
 		} catch (LdapException e) {
 			logger.error("Error occured while adding new group.");
-			return null;
+			HttpHeaders headers = new HttpHeaders();
+    		return ResponseEntity
+    				.status(HttpStatus.EXPECTATION_FAILED)
+    				.headers(headers)
+    				.build();
 		}
+		Map<String, Object> requestData = new HashMap<String, Object>();
+		List<String> userAdded = new ArrayList<>();
+		
+		for (LdapEntry user : entries) {
+			if (user.getUid() != null) {
+				userAdded.add(user.getUid());
+			}
+		}
+		requestData.put("uid",userAdded);
+		ObjectMapper dataMapper = new ObjectMapper();
+		String jsonString = "";
+		try {
+			jsonString = dataMapper.writeValueAsString(requestData);
+		} catch (JsonProcessingException e1) {
+			logger.error("Error occured while mapping request data to json. Error: " +  e1.getMessage());
+		}
+		String log = "Users has been added to " + entry.getDistinguishedName();
+		operationLogService.saveOperationLog(OperationType.MOVE, log, jsonString.getBytes(), null, null, null);
+		
 		return new ResponseEntity<LdapEntry>(entry, HttpStatus.OK);
 	}
 	
 	//get members of group
-	@RequestMapping(method=RequestMethod.POST ,value = "/group/members", produces = MediaType.APPLICATION_JSON_VALUE)
-	public List<LdapEntry> getMembersOfGroup(@RequestParam(value="dn", required=true) String dn) {
+	@Operation(summary = "", description = "", tags = { "user-groups" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = ""),
+			  @ApiResponse(responseCode = "400", description = "", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@GetMapping(value = "/group/members/dn/{dn}" , produces = MediaType.APPLICATION_JSON_VALUE)
+	//@RequestMapping(method=RequestMethod.POST ,value = "/group/members", produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<List<LdapEntry>> getMembersOfGroup(@RequestParam(value="dn", required=true) String dn) {
 		LdapEntry entry = ldapService.getEntryDetail(dn);
 		List<LdapEntry> listOfMembers = new ArrayList<>();
 
 		for(String memberDN: entry.getAttributesMultiValues().get("member")) {
 			listOfMembers.add(ldapService.getEntryDetail(memberDN));
 		}
-		return listOfMembers;
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(listOfMembers);
+				
 	}
 	
 	//delete member from group
-	@RequestMapping(method=RequestMethod.POST ,value = "/delete/group/members", produces = MediaType.APPLICATION_JSON_VALUE)
-	@ResponseBody
-	public LdapEntry deleteMembersOfGroup(@RequestParam(value="dn", required=true) String dn, 
+	@Operation(summary = "", description = "", tags = { "user-groups" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = ""),
+			  @ApiResponse(responseCode = "400", description = "", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PutMapping(value = "/delete/group/members", produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<LdapEntry> deleteMembersOfGroup(@RequestParam(value="dn", required=true) String dn, 
 			@RequestParam(value="dnList[]", required=true) List<String> dnList) {
 		//when single dn comes spring boot takes it as multiple arrays
 		//so dn must be joined with comma
 		//if member dn that will be added to group is cn=agent1,ou=Groups,dn=liderahenk,dc=org
 		//spring boot gets this param as array which has size 4
+		String dnStringTemp = String.join(",", dnList);
+		List <String> dnListTemp = new ArrayList<>();
+		dnListTemp.add(dnStringTemp);
+		DNType dnType= null;
+		try {
+			dnType = getEntryType(dnListTemp.get(0).toString());
+		} catch (LdapException e2) {
+			// TODO Auto-generated catch block
+			e2.printStackTrace();
+		}
+		if(dnType.toString().equals("GROUP")) 
+			policyService.unassignmentPolicyDeletedMember(dnList, dn) ;
 		Boolean checkedArraySizeIsOne = true;
 		for (int i = 0; i < dnList.size(); i++) {
 			if(dnList.get(i).contains(",")) {
@@ -236,7 +376,11 @@ public class UserGroupsController {
 				ldapService.updateEntryRemoveAttributeWithValue(dn, "member", String.join(",", dnList));
 			} catch (LdapException e) {
 				e.printStackTrace();
-				return null;
+				HttpHeaders headers = new HttpHeaders();
+	    		return ResponseEntity
+	    				.status(HttpStatus.EXPECTATION_FAILED)
+	    				.headers(headers)
+	    				.build();
 			}
 		} else {
 			for (int i = 0; i < dnList.size(); i++) {
@@ -244,30 +388,76 @@ public class UserGroupsController {
 					ldapService.updateEntryRemoveAttributeWithValue(dn, "member", dnList.get(i));
 				} catch (LdapException e) {
 					e.printStackTrace();
-					return null;
+					HttpHeaders headers = new HttpHeaders();
+		    		return ResponseEntity
+		    				.status(HttpStatus.EXPECTATION_FAILED)
+		    				.headers(headers)
+		    				.build();
 				}
 			}
 		}
-		return ldapService.getEntryDetail(dn);
+		
+		Map<String, Object> requestData = new HashMap<String, Object>();
+		requestData.put("dn",dn);
+		requestData.put("uid",dnList.get(0));
+		ObjectMapper dataMapper = new ObjectMapper();
+		String jsonString = null ;
+		try {
+			jsonString = dataMapper.writeValueAsString(requestData);
+		} catch (JsonProcessingException e1) {
+			logger.error("Error occured while mapping request data to json. Error: " +  e1.getMessage());
+		}
+		String log = dnList.get(0) + " has been deleted from " + dn;
+		operationLogService.saveOperationLog(OperationType.DELETE, log, jsonString.getBytes(), null, null, null);
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(ldapService.getEntryDetail(dn));
 	}
 	
-	@RequestMapping(method=RequestMethod.POST ,value = "/move/entry", produces = MediaType.APPLICATION_JSON_VALUE)
-	public Boolean moveEntry(@RequestParam(value="sourceDN", required=true) String sourceDN,
+	@Operation(summary = "", description = "", tags = { "user-groups" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = ""),
+			  @ApiResponse(responseCode = "400", description = "", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/move/entry", produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<Boolean> moveEntry(@RequestParam(value="sourceDN", required=true) String sourceDN,
 			@RequestParam(value="destinationDN", required=true) String destinationDN) {
 		try {
 			ldapService.moveEntry(sourceDN, destinationDN);
 		} catch (Exception e) {
 			e.printStackTrace();
-			return false;
+			return ResponseEntity
+					.status(HttpStatus.EXPECTATION_FAILED)
+					.body(false);
 		}
-		return true;
+		
+		Map<String, Object> requestData = new HashMap<String, Object>();
+		requestData.put("SourceDN",sourceDN);
+		requestData.put("DestinationDN",destinationDN);
+
+		ObjectMapper dataMapper = new ObjectMapper();
+		String jsonString = null ;
+		try {
+			jsonString = dataMapper.writeValueAsString(requestData);
+		} catch (JsonProcessingException e1) {
+			logger.error("Error occured while mapping request data to json. Error: " +  e1.getMessage());
+		}
+		String log = "Entry has been moved from " + sourceDN + " to " + destinationDN ;
+		operationLogService.saveOperationLog(OperationType.MOVE, log, jsonString.getBytes(), null, null, null);
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(true);
 	}
 	
-	@RequestMapping(method=RequestMethod.POST ,value = "/rename/entry", produces = MediaType.APPLICATION_JSON_VALUE)
-	public LdapEntry renameEntry(@RequestParam(value="oldDN", required=true) String oldDN,
+	@Operation(summary = "", description = "", tags = { "user-groups" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = ""),
+			  @ApiResponse(responseCode = "400", description = "", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/rename/entry", produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<LdapEntry> renameEntry(@RequestParam(value="oldDN", required=true) String oldDN,
 			@RequestParam(value="newName", required=true) String newName) {
-		try {
-			
+		try {	
 			ldapService.renameEntry(oldDN, newName);
 			String newEntryDN = newName + ",";
 			LdapName dn = new LdapName(oldDN);
@@ -278,15 +468,36 @@ public class UserGroupsController {
 				}
 			}
 			LdapEntry selectedEntry = ldapService.getEntryDetail(newEntryDN);
-			return selectedEntry;
+			
+			Map<String, Object> requestData = new HashMap<String, Object>();
+			requestData.put("oldDN", oldDN);
+			requestData.put("newDN", newName);
+			ObjectMapper dataMapper = new ObjectMapper();
+			String jsonString = dataMapper.writeValueAsString(requestData);
+			String log = "Entry name has been changed from " + oldDN + " to " + newName;
+			operationLogService.saveOperationLog(OperationType.UPDATE, log, jsonString.getBytes(), null, null, null);
+			
+			return ResponseEntity
+					.status(HttpStatus.OK)
+					.body(selectedEntry);
+					
 		} catch (Exception e) {
-			e.printStackTrace();
-			return null;
+			logger.error("Error occured while mapping request data to json. Error: " +  e.getMessage());
+			HttpHeaders headers = new HttpHeaders();
+    		return ResponseEntity
+    				.status(HttpStatus.EXPECTATION_FAILED)
+    				.headers(headers)
+    				.build();
 		}
 	}
 	
-	@RequestMapping(method=RequestMethod.POST, value = "/addOu",produces = MediaType.APPLICATION_JSON_VALUE)
-	public LdapEntry addOu(@RequestBody  LdapEntry selectedEntry) {
+	@Operation(summary = "", description = "", tags = { "user-groups" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = ""),
+			  @ApiResponse(responseCode = "400", description = "", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/add-ou", produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<LdapEntry> addOu(@RequestBody  LdapEntry selectedEntry) {
 		try {
 			Map<String, String[]> attributes = new HashMap<String,String[]>();
 			attributes.put("objectClass", new String[] {"organizationalUnit", "top", "pardusLider"} );
@@ -295,40 +506,73 @@ public class UserGroupsController {
 			String dn="ou="+selectedEntry.getOu()+","+selectedEntry.getParentName();
 			
 			ldapService.addEntry(dn, attributes);
-			logger.info("OU created successfully RDN ="+dn);
+			logger.info("OU created successfully RDN =" + dn);
 			
 			//get full of ou details after creation
 			selectedEntry = ldapService.getEntryDetail(dn);
 			
-			return selectedEntry;
-		} catch (LdapException e) {
-			e.printStackTrace();
-			return null;
+			Map<String, Object> requestData = new HashMap<String, Object>();
+			requestData.put("dn", selectedEntry.getDistinguishedName());
+			ObjectMapper dataMapper = new ObjectMapper();
+			String jsonString = dataMapper.writeValueAsString(requestData);
+			String log = "Entry has been added to " + selectedEntry.getDistinguishedName();
+			operationLogService.saveOperationLog(OperationType.CREATE, log, jsonString.getBytes(), null, null, null);
+			
+			return ResponseEntity
+					.status(HttpStatus.OK)
+					.body(selectedEntry);
+					
+		} catch (Exception e) {
+			logger.error("Error occured while mapping request data to json. Error: " +  e.getMessage());
+			HttpHeaders headers = new HttpHeaders();
+    		return ResponseEntity
+    				.status(HttpStatus.EXPECTATION_FAILED)
+    				.headers(headers)
+    				.build();
 		}
 	}
 	
-	@RequestMapping(method=RequestMethod.POST, value = "/deleteEntry")
-	public ResponseEntity<?> deleteEntry(@RequestParam(value = "dn") String dn) {
+	@Operation(summary = "", description = "", tags = { "user-groups" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = ""),
+			  @ApiResponse(responseCode = "400", description = "", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@DeleteMapping(value = "/delete-entry/dn/{dn}")
+	public ResponseEntity<?> deleteEntry(@PathVariable String dn) {
 		try {
 			if(dn.equals("cn=adminGroups," + configurationService.getUserGroupLdapBaseDn())) {
-				return new ResponseEntity<String[]>(new String[] {"Admin grubu silinemez!"}, HttpStatus.BAD_REQUEST);
+				return new ResponseEntity<String[]>(new String[] {"Admin grubu silinemez!"}, HttpStatus.CONFLICT);
 			}
 			if(dn.contains(configurationService.getUserGroupLdapBaseDn()) && dn.length() > configurationService.getUserGroupLdapBaseDn().length() ) {
 				ldapService.updateOLCAccessRulesAfterEntryDelete(dn);
 				ldapService.deleteNodes(ldapService.getOuAndOuSubTreeDetail(dn));
+				
+
+				Map<String, Object> requestData = new HashMap<String, Object>();
+				requestData.put("dn", dn);
+				ObjectMapper dataMapper = new ObjectMapper();
+				String jsonString = dataMapper.writeValueAsString(requestData);
+				String log = "Entry name has been deleted " + dn;
+				operationLogService.saveOperationLog(OperationType.DELETE, log, jsonString.getBytes(), null, null, null);
+				
 				return new ResponseEntity<String[]>(new String[] {"Grup başarıyla silindi"}, HttpStatus.OK);
 			} else {
-				return new ResponseEntity<String[]>(new String[] {"Hata oluştu"}, HttpStatus.BAD_REQUEST);
+				return new ResponseEntity<String[]>(new String[] {"Hata oluştu"}, HttpStatus.EXPECTATION_FAILED);
 			}
+			
 		} catch (Exception e) {
 			e.printStackTrace();
-			return new ResponseEntity<String[]>(new String[] {"Hata oluştu"}, HttpStatus.BAD_REQUEST);
+			return new ResponseEntity<String[]>(new String[] {"Hata oluştu"}, HttpStatus.EXPECTATION_FAILED);
 		}
 	}
 	
 	//add new group and add selected agents
-	@RequestMapping(method=RequestMethod.POST ,value = "/createNewGroup", produces = MediaType.APPLICATION_JSON_VALUE)
-	@ResponseBody
+	@Operation(summary = "", description = "", tags = { "user-groups" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = ""),
+			  @ApiResponse(responseCode = "400", description = "", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/create-new-group" , produces = MediaType.APPLICATION_JSON_VALUE)
 	public ResponseEntity<?> createNewUserGroup(@RequestBody Map<String, String> params) throws JsonMappingException, JsonProcessingException {
 		ObjectMapper mapper = new ObjectMapper();
 		String selectedOUDN = params.get("selectedOUDN");
@@ -388,8 +632,31 @@ public class UserGroupsController {
 			entry = ldapService.getEntryDetail(newGroupDN);
 		} catch (LdapException e) {
 			logger.error("Error occured while adding new group.");
-			return null;
+			HttpHeaders headers = new HttpHeaders();
+    		return ResponseEntity
+    				.status(HttpStatus.EXPECTATION_FAILED)
+    				.headers(headers)
+    				.build();
 		}
+		
+		Map<String, Object> requestData = new HashMap<String, Object>();
+		List<String> userAdded = new ArrayList<>();
+		
+		for (LdapEntry user : entries) {
+			if (user.getUid() != null) {
+				userAdded.add(user.getUid());
+			}
+		}
+		requestData.put("uid",userAdded);
+		ObjectMapper dataMapper = new ObjectMapper();
+		String jsonString = null;
+		try {
+			jsonString = dataMapper.writeValueAsString(requestData);
+		} catch (JsonProcessingException e1) {
+			logger.error("Error occured while mapping request data to json. Error: " +  e1.getMessage());
+		}
+		String log = "New user group has been created " + entry.getDistinguishedName();
+		operationLogService.saveOperationLog(OperationType.CREATE, log, jsonString.getBytes(), null, null, null);
 		
 //		try {
 //			//when single dn comes spring boot takes it as multiple arrays
@@ -432,4 +699,71 @@ public class UserGroupsController {
 		}
 		return users;
 	}
+	
+	@Operation(summary = "Domain admin privilege by group dn", description = "", tags = { "user-groups" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = ""),
+			  @ApiResponse(responseCode = "417", description = "", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/domain-admin")
+	public ResponseEntity<?> updateDomainAdmin(@RequestParam(value = "dn") String dn,
+			@RequestParam(value = "isDomainAdmin") Boolean isDomainAdmin) {
+		try {
+			if (isDomainAdmin) {
+				List<LdapSearchFilterAttribute> filterAttributesList = new ArrayList<LdapSearchFilterAttribute>();
+				List<LdapEntry> groups = null;
+				filterAttributesList.add(new LdapSearchFilterAttribute("objectClass", "pardusLider", SearchFilterEnum.EQ));
+				filterAttributesList.add(new LdapSearchFilterAttribute("entryDN", dn, SearchFilterEnum.EQ));
+				groups = ldapService.search(configurationService.getUserGroupLdapBaseDn(), filterAttributesList, new String[] {"*"});
+				
+				if (groups.isEmpty()) {
+					ldapService.updateEntryAddAtribute(dn, "objectClass", "pardusLider");
+				}
+				ldapService.updateEntryAddAtribute(dn, "liderPrivilege", "ROLE_DOMAIN_ADMIN");
+			} else {
+				try {
+					ldapService.updateEntryRemoveAttributeWithValue(dn, "liderPrivilege", "ROLE_DOMAIN_ADMIN");
+				} catch (LdapException e) {
+					e.printStackTrace();
+					HttpHeaders headers = new HttpHeaders();
+		    		return ResponseEntity
+		    				.status(HttpStatus.EXPECTATION_FAILED)
+		    				.headers(headers)
+		    				.build();
+				}
+			}
+			Map<String, Object> requestData = new HashMap<String, Object>();
+			requestData.put("dn", dn);
+			ObjectMapper dataMapper = new ObjectMapper();
+			String jsonString = dataMapper.writeValueAsString(requestData);
+			
+			if (isDomainAdmin) {
+				String logAdded = "The group has been given domain admin privileges. " + dn;
+				operationLogService.saveOperationLog(OperationType.UPDATE, logAdded, jsonString.getBytes(), null, null, null);
+			} else {
+				String logDeleted = "The group's has been deleted domain admin privileges. " + dn;
+				operationLogService.saveOperationLog(OperationType.DELETE, logDeleted, jsonString.getBytes(), null, null, null);
+			}
+			
+			
+			LdapEntry selectedEntry = ldapService.getEntryDetail(dn);
+			return ResponseEntity
+					.status(HttpStatus.OK)
+					.body(selectedEntry);
+		} catch (Exception e) {
+			e.printStackTrace();
+			return new ResponseEntity<String[]>(new String[] {"Hata oluştu"}, HttpStatus.EXPECTATION_FAILED);
+		}
+	}
+	
+	private DNType getEntryType(String dn) throws LdapException {
+		List<LdapSearchFilterAttribute> filterAttributesList = new ArrayList<LdapSearchFilterAttribute>();
+		List<LdapEntry> entry = null;
+		
+		filterAttributesList.add(new LdapSearchFilterAttribute("entryDN", dn, SearchFilterEnum.EQ));
+		entry = ldapService.search(configurationService.getLdapRootDn(), filterAttributesList, new String[] {"*"});
+		
+		return entry.get(0).getType();
+	}
+	
 }

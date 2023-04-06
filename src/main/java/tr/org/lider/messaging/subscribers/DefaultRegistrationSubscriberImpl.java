@@ -19,6 +19,7 @@
  */
 package tr.org.lider.messaging.subscribers;
 
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -38,6 +39,8 @@ import tr.org.lider.entities.AgentPropertyImpl;
 import tr.org.lider.entities.UserSessionImpl;
 import tr.org.lider.ldap.LDAPServiceImpl;
 import tr.org.lider.ldap.LdapEntry;
+import tr.org.lider.ldap.LdapSearchFilterAttribute;
+import tr.org.lider.ldap.SearchFilterEnum;
 import tr.org.lider.messaging.enums.AgentMessageType;
 import tr.org.lider.messaging.enums.StatusCode;
 import tr.org.lider.messaging.messages.ILiderMessage;
@@ -424,9 +427,23 @@ public class DefaultRegistrationSubscriberImpl implements IRegistrationSubscribe
 			user = ldapEntries.get(0);
 		}
 		if(user != null && passwordEncoder.matches(userPassword, user.getUserPassword())) {
-			return user;
+			if (findGroups(user.getDistinguishedName()).size() > 0) {
+				return user;
+			} else {
+				return null;
+			}
 		} else {
 			return null;
 		}
+	}
+	
+	private List<LdapEntry> findGroups(String userDn) throws LdapException {
+		List<LdapSearchFilterAttribute> filterAttributesList = new ArrayList<LdapSearchFilterAttribute>();
+		List<LdapEntry> groups = null;
+		filterAttributesList.add(new LdapSearchFilterAttribute("objectClass", configurationService.getGroupLdapObjectClasses(), SearchFilterEnum.EQ));
+		filterAttributesList.add(new LdapSearchFilterAttribute("liderPrivilege", "ROLE_DOMAIN_ADMIN", SearchFilterEnum.EQ));
+		filterAttributesList.add(new LdapSearchFilterAttribute("member", userDn, SearchFilterEnum.EQ));
+		groups = ldapService.search(configurationService.getUserGroupLdapBaseDn(), filterAttributesList, new String[] {"*"});
+		return groups;
 	}
 }

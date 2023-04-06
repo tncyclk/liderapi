@@ -39,6 +39,27 @@ public class UserSessionMessageImpl implements IUserSessionMessage {
 	
 	private String agentVersion;
 	
+	private String hardwareDiskSsdInfo;
+	
+	private String hardwareDiskHddInfo;
+	
+	@Override
+	public String getHardwareDiskSsdInfo() {
+		return hardwareDiskSsdInfo;
+	}
+
+	public void setHardwareDiskSsdInfo(String hardwareDiskSsdInfo) {
+		this.hardwareDiskSsdInfo = hardwareDiskSsdInfo;
+	}
+	
+	@Override
+	public String getHardwareDiskHddInfo() {
+		return hardwareDiskHddInfo;
+	}
+
+	public void setHardwareDiskHddInfo(String hardwareDiskHddInfo) {
+		this.hardwareDiskHddInfo = hardwareDiskHddInfo;
+	}
 
 	@Override
 	public AgentMessageType getType() {
@@ -154,5 +175,8 @@ public class UserSessionMessageImpl implements IUserSessionMessage {
 	public void setAgentVersion(String agentVersion) {
 		this.agentVersion = agentVersion;
 	}
+	
+
+
 	
 }

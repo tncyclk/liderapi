@@ -28,7 +28,7 @@ package tr.org.lider.ldap;
  */
 public enum SearchFilterEnum {
 
-	EQ("="), NOT_EQ("!=");
+	EQ("="), NOT_EQ("!="), OR("||");
 
 	private String operator;
 

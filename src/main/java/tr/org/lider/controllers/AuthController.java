@@ -26,12 +26,20 @@ import org.springframework.security.authentication.LockedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import tr.org.lider.entities.OperationType;
 import tr.org.lider.security.AESHash;
 import tr.org.lider.security.JwtProvider;
@@ -43,6 +51,7 @@ import tr.org.lider.services.OperationLogService;
 @CrossOrigin(origins = "*", maxAge = 3600)
 @RestController
 @RequestMapping("/api/auth")
+@Tag(name = "authenticate", description = "Authentication Rest Service")
 public class AuthController {
 
 	Logger logger = LoggerFactory.getLogger(AuthController.class);
@@ -67,8 +76,14 @@ public class AuthController {
 
 	@Value("${jwt.expiration}")
 	private int jwtExpiration;
-
-	@RequestMapping(value="/signin", method=RequestMethod.POST)
+	
+	
+	@Operation(summary = "", description = "", tags = { "authenticate" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = "Authentication has been done."),
+			  @ApiResponse(responseCode = "400", description = "Authentication failed. Bad Request.", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/signin")
 	public ResponseEntity<?> authenticateUser(@Valid @RequestBody LoginParams loginParams, HttpServletRequest request) {
 		Authentication authentication = null;
 		try {
@@ -82,7 +97,7 @@ public class AuthController {
 			String tokenData = AESHash.encrypt(loginParams.getPassword(), jwtSecret + jwt);
 			Cache<String, String> cache = cacheManager.getCache("userCache");
 			cache.put(jwt, tokenData);
-			operationLogService.saveOperationLog(OperationType.LOGIN,"Lider Arayüze Giriş Yapıldı.",null);
+			operationLogService.saveOperationLog(OperationType.LOGIN,"User logged in",null);
 			return ResponseEntity.ok(new JwtResponse(jwt, userPrincipal.getName(), userPrincipal.getSurname()));
 		} catch (BadCredentialsException e) {
 			logger.warn("Username: " + loginParams.getUsername() + " requested to login but username or password is wrong. Returned: " + HttpStatus.NOT_FOUND);
@@ -98,5 +113,16 @@ public class AuthController {
 			logger.warn("Username: " + loginParams.getUsername() + " requested to login but other exception occured. Returned: " + HttpStatus.SEE_OTHER);
 			return new ResponseEntity<String>("Login failed", HttpStatus.SEE_OTHER);
 		}
+	}
+	
+	@Operation(summary = "", description = "", tags = { "authenticate" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = "Authentication has been done."),
+			  @ApiResponse(responseCode = "400", description = "Authentication failed. Bad Request.", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/logout")
+	public ResponseEntity<String> logout(Model model, Authentication authentication) {
+		operationLogService.saveOperationLog(OperationType.LOGOUT,"User logout", null);
+		return new ResponseEntity<String>("logout", HttpStatus.OK);
 	}
 }

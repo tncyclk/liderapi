@@ -1,5 +1,6 @@
 package tr.org.lider.repositories;
 
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
@@ -41,6 +42,7 @@ public class AgentInfoCriteriaBuilder {
 	public Page<AgentImpl> filterAgents(
 			int pageNumber,
 			int pageSize,
+			Optional<String> sessionReportType,
 			Optional<Date> registrationStartDate,
 			Optional<Date> registrationEndDate,
 			Optional<String> status,
@@ -53,6 +55,7 @@ public class AgentInfoCriteriaBuilder {
 			Optional<String> processor,
 			Optional<String> osVersion,
 			Optional<String> agentVersion,
+			Optional<String> diskType,
 			List<String> listOfOnlineUsers) {
 		PageRequest pageable = PageRequest.of(pageNumber - 1, pageSize);
 
@@ -154,7 +157,7 @@ public class AgentInfoCriteriaBuilder {
 			predicatesCount.add(cbCount.and(namePredicateCount, valuePredicateCount));
 		}
 		
-		if(osVersion.isPresent() && !osVersion.get().equals("")) {
+		if(osVersion.isPresent() && !osVersion.get().equals("" ) && !osVersion.get().equals("null")) {
 			Join<AgentImpl, AgentPropertyImpl> properties = from.join("properties");
 			Predicate namePredicate = cb.like(properties.get("propertyName").as(String.class), "os.version");
 			Predicate valuePredicate = cb.like(properties.get("propertyValue").as(String.class), osVersion.get());
@@ -178,6 +181,71 @@ public class AgentInfoCriteriaBuilder {
 			Predicate namePredicateCount = cbCount.like(propertiesCount.get("propertyName").as(String.class), "agentVersion");
 			Predicate valuePredicateCount = cbCount.like(propertiesCount.get("propertyValue").as(String.class), agentVersion.get());
 			predicatesCount.add(cbCount.and(namePredicateCount, valuePredicateCount));
+		}
+		
+		if(diskType.isPresent() && !diskType.get().equals("") && !diskType.get().equals("ALL")) {
+			
+			Join<AgentImpl, AgentPropertyImpl> properties = from.join("properties");
+			Predicate namePredicate = cb.like(properties.get("propertyName").as(String.class),diskType.get());
+			predicates.add(namePredicate);
+
+			//for count 
+			Join<AgentImpl, AgentPropertyImpl> propertiesCount = fromCount.join("properties");
+			Predicate namePredicateCount = cbCount.like(propertiesCount.get("propertyName").as(String.class),diskType.get());
+			predicatesCount.add(namePredicateCount);
+		}
+		
+		if(sessionReportType.isPresent() && !sessionReportType.get().equals("")) {
+//		if(sessionReportType != null) {
+			Date sessionFilterDate = null;
+			Date now = new Date();
+			if(sessionReportType.get().equals("LAST_ONE_MONTH_NO_SESSIONS")) { 
+				predicates.add(
+						cb.not(from.get("jid").in(
+								!CollectionUtils.isEmpty(listOfOnlineUsers)? listOfOnlineUsers : new ArrayList<String>(Arrays.asList("")))));
+				predicatesCount.add(
+						cb.not(fromCount.get("jid").in(
+								!CollectionUtils.isEmpty(listOfOnlineUsers)? listOfOnlineUsers : new ArrayList<String>(Arrays.asList("")))));
+				
+				sessionFilterDate = Date.from(ZonedDateTime.now().minusMonths(1).toInstant());
+				predicates.add(cb.between(from.get("lastLoginDate"), sessionFilterDate, new Date()).not());
+				predicatesCount.add(cbCount.between(fromCount.get("lastLoginDate"), sessionFilterDate, now).not());
+			} else if(sessionReportType.get().equals("LAST_TWO_MONTHS_NO_SESSIONS")) {
+				predicates.add(
+						cb.not(from.get("jid").in(
+								!CollectionUtils.isEmpty(listOfOnlineUsers)? listOfOnlineUsers : new ArrayList<String>(Arrays.asList("")))));
+				predicatesCount.add(
+						cbCount.not(fromCount.get("jid").in(
+								!CollectionUtils.isEmpty(listOfOnlineUsers)? listOfOnlineUsers : new ArrayList<String>(Arrays.asList("")))));
+				
+				sessionFilterDate = Date.from(ZonedDateTime.now().minusMonths(2).toInstant());
+				predicates.add(cb.between(from.get("lastLoginDate"), sessionFilterDate, new Date()).not());
+				predicatesCount.add(cbCount.between(fromCount.get("lastLoginDate"), sessionFilterDate, now).not());
+			} else if(sessionReportType.get().equals("LAST_THREE_MONTHS_NO_SESSIONS")) {
+				predicates.add(
+						cb.not(from.get("jid").in(
+								!CollectionUtils.isEmpty(listOfOnlineUsers)? listOfOnlineUsers : new ArrayList<String>(Arrays.asList("")))));
+				predicatesCount.add(
+						cbCount.not(fromCount.get("jid").in(
+								!CollectionUtils.isEmpty(listOfOnlineUsers)? listOfOnlineUsers : new ArrayList<String>(Arrays.asList("")))));
+				
+				sessionFilterDate = Date.from(ZonedDateTime.now().minusMonths(3).toInstant());
+				predicates.add(cb.between(from.get("lastLoginDate"), sessionFilterDate, new Date()).not());
+				predicatesCount.add(cbCount.between(fromCount.get("lastLoginDate"), sessionFilterDate, now).not());
+			} else if(sessionReportType.get().equals("LAST_ONE_MONTH_SESSIONS")) {
+				sessionFilterDate = Date.from(ZonedDateTime.now().minusMonths(1).toInstant());
+				predicates.add(cb.between(from.get("lastLoginDate"), sessionFilterDate, new Date()));
+				predicatesCount.add(cbCount.between(fromCount.get("lastLoginDate"), sessionFilterDate, now));
+			} else if(sessionReportType.get().equals("LAST_TWO_MONTHS_SESSIONS")) {
+				sessionFilterDate = Date.from(ZonedDateTime.now().minusMonths(2).toInstant());
+				predicates.add(cb.between(from.get("lastLoginDate"), sessionFilterDate, new Date()));
+				predicatesCount.add(cbCount.between(fromCount.get("lastLoginDate"), sessionFilterDate, now));
+			} else if(sessionReportType.get().equals("LAST_THREE_MONTHS_SESSIONS")) {
+				sessionFilterDate = Date.from(ZonedDateTime.now().minusMonths(3).toInstant());
+				predicates.add(cb.between(from.get("lastLoginDate"), sessionFilterDate, new Date()));
+				predicatesCount.add(cbCount.between(fromCount.get("lastLoginDate"), sessionFilterDate, now));
+			}
+
 		}
 
 		criteriaQuery.where(predicates.toArray(new Predicate[predicates.size()]));

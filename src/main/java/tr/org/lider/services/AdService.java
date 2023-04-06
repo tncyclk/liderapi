@@ -57,10 +57,12 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import tr.org.lider.ldap.DNType;
+import tr.org.lider.ldap.GroupLinkedList;
 import tr.org.lider.ldap.ILDAPService;
 import tr.org.lider.ldap.LdapEntry;
 import tr.org.lider.ldap.LdapSearchFilterAttribute;
 import tr.org.lider.ldap.SearchFilterEnum;
+import tr.org.lider.messaging.enums.DomainType;
 
 
 @Service
@@ -70,6 +72,7 @@ public class AdService implements ILDAPService{
 	
 	private final static Logger logger = LoggerFactory.getLogger(AdService.class);
 	
+
 	
 	@Autowired
 	private ConfigurationService configurationService;
@@ -797,5 +800,138 @@ public class AdService implements ILDAPService{
 			e.printStackTrace();
 		}
 		return ouEntry;
+	}
+	
+	public List<String> getParentsDnOfLdapEntry (LdapEntry selectedEntry){
+		List <String> parentDnList = new ArrayList<>();
+		LdapEntry ldapEntry = selectedEntry;
+		try {
+
+			String filter= "(objectClass=*)";
+			List<LdapEntry> ldapEntries  = findSubEntries(ldapEntry.getDistinguishedName(), filter,
+					new String[] { "*" }, SearchScope.OBJECT);
+			
+			if(ldapEntries.size()>0) {
+				if(ldapEntries.get(0).getAttributesMultiValues().get("memberOf") != null) {
+					for(String memberOf : ldapEntries.get(0).getAttributesMultiValues().get("memberOf")) {
+						parentDnList.add(memberOf);
+					}
+				}
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		return parentDnList;
+	}
+	
+	public List<String> getGroupInGroups(LdapEntry selectedEntry) {
+		List<String> totalGroupList= new ArrayList<>();
+		GroupLinkedList groupList = new GroupLinkedList();
+		groupList.append(selectedEntry.getDistinguishedName(), false);
+	    try {
+	    	if(!groupList.head.equals(null)) {
+	    		GroupLinkedList.Node groupListTemp = groupList.head;
+	    		while(!groupListTemp.viseted && groupListTemp!= null)  {
+	    			if(groupListTemp.viseted) {
+	    				if (groupListTemp.next == null) {
+			        		break;
+			        	}
+	    				groupListTemp = groupListTemp.next;
+		        		continue;
+	    			}
+	    			else {
+		    			List<LdapEntry> subGroupList = getMembersInGroupAsGroup(groupListTemp.currentDn);
+		    			if (subGroupList != null) {
+	                        for (LdapEntry subGroup : subGroupList) {
+	                        	GroupLinkedList.Node fnode = groupList.head;
+	    		        		while(fnode != null) {
+	    		        			if(fnode.currentDn.equals(subGroup.getDistinguishedName())) {
+	    		        				break;
+	    		        			}
+	    		        			if (fnode.next == null) {
+	    		        				groupList.append(subGroup.getDistinguishedName(), false);
+	    		    	        		break;
+	    		    	        	}
+	    		        			fnode = fnode.next;
+	    		        		}
+	                        }
+	                    }
+		    			groupList.updateValue(groupListTemp, false, true);
+		    			if (!totalGroupList.contains(groupListTemp.currentDn)) {
+							totalGroupList.add(groupListTemp.currentDn);
+						}
+		    			if (groupListTemp.next == null) {
+		    				break;
+		    			}
+		    			groupListTemp = groupListTemp.next;
+	    			}
+	    		}
+	    	}
+	    } catch (Exception e) {
+	        e.printStackTrace();
+	    }
+	    return totalGroupList;
+	}
+	
+	public List<LdapEntry> getMembersInGroupAsGroup(String disDn) {
+		List<LdapEntry> ldapEntry = null;
+		List<LdapEntry> targetEntries= new ArrayList<>();
+		List<LdapSearchFilterAttribute> filterAttributesList = new ArrayList<LdapSearchFilterAttribute>();
+		filterAttributesList.add(new LdapSearchFilterAttribute("objectclass", "group", SearchFilterEnum.EQ));
+		filterAttributesList.add(new LdapSearchFilterAttribute("distinguishedName", disDn, SearchFilterEnum.EQ));
+		String baseDn = getADDomainName();
+		try {
+			ldapEntry = search(baseDn, filterAttributesList, new String[] {"*"});
+		} catch (LdapException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
+		if(ldapEntry != null && ldapEntry.get(0).getType().equals(DNType.GROUP)) {
+			String[] members= ldapEntry.get(0).getAttributesMultiValues().get("member");
+			if(members != null) {
+				for (int i = 0; i < members.length; i++) {
+					String dn = members[i];
+					try {
+						List<LdapEntry> member = findSubEntries(dn, "(objectclass=group)", new String[] { "*" }, SearchScope.OBJECT);
+						if(member!=null && member.size()>0) {
+							targetEntries.add(member.get(0));
+						}
+					} catch (LdapException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				}
+			}
+		}
+		return targetEntries; 
+	}
+
+	public List <LdapEntry> getLdapDnStringToEntry(List <String> groupDnList){
+		List<LdapEntry> groupLdapEtries = new ArrayList<LdapEntry>();
+		if(groupDnList.size()>0) {
+			for(int i = 0; i < groupDnList.size(); i++) {
+				List<LdapSearchFilterAttribute> filterAttributesList = new ArrayList<LdapSearchFilterAttribute>();
+				filterAttributesList.add(new LdapSearchFilterAttribute("objectClass", "group", SearchFilterEnum.EQ));
+				filterAttributesList.add(new LdapSearchFilterAttribute("distinguishedName", groupDnList.get(i), SearchFilterEnum.EQ));
+				try {
+					String baseDn = getADDomainName();
+					List<LdapEntry> search = search(baseDn, filterAttributesList, new String[] {"*"});
+					groupLdapEtries.add(search.get(0));
+				} catch (LdapException e1) {
+					// TODO Auto-generated catch block
+					e1.printStackTrace();
+				}
+			}
+		}
+		return groupLdapEtries;
+	}
+	
+	public Boolean isExistInLdapEntry(List <LdapEntry> entryList, LdapEntry entry) {
+			for (LdapEntry eachEntry : entryList) {
+				if(eachEntry.getDistinguishedName().equals(entry.getDistinguishedName())) {
+					return true;
+				}
+			}
+		return false;
 	}
 }

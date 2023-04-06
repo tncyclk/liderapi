@@ -25,6 +25,8 @@ import tr.org.lider.entities.TaskImpl;
 import tr.org.lider.ldap.DNType;
 import tr.org.lider.ldap.LDAPServiceImpl;
 import tr.org.lider.ldap.LdapEntry;
+import tr.org.lider.ldap.LdapSearchFilterAttribute;
+import tr.org.lider.ldap.SearchFilterEnum;
 import tr.org.lider.messaging.messages.ExecuteTaskMessageImpl;
 import tr.org.lider.messaging.messages.FileServerConf;
 import tr.org.lider.messaging.messages.ILiderMessage;
@@ -33,12 +35,17 @@ import tr.org.lider.repositories.TaskRepository;
 import tr.org.lider.utils.IRestResponse;
 import tr.org.lider.utils.ResponseFactoryService;
 import tr.org.lider.utils.RestResponseStatus;
+import tr.org.lider.services.ConfigurationService;
+
 
 @Service
 public class TaskService {
 
 	Logger logger = LoggerFactory.getLogger(TaskService.class);
 
+//	@Autowired
+//	private ConfigurationService configurationService;
+	
 	@Autowired
 	private LDAPServiceImpl ldapService;
 
@@ -184,28 +191,32 @@ public class TaskService {
 
 	private List<LdapEntry> getTargetList(PluginTask request) {
 		List<LdapEntry> targetEntries= new ArrayList<>();
+		List <LdapEntry> ldapEntryGroups = new ArrayList<>();
 		List<LdapEntry> selectedtEntries= request.getEntryList();
 		for (LdapEntry ldapEntry : selectedtEntries) {
 			if(ldapEntry.getType().equals(DNType.AHENK)) {
-				targetEntries.add(ldapEntry);
+				targetEntries.add(ldapEntry); 
 			}
 			if(ldapEntry.getType().equals(DNType.GROUP)) {
-				String[] members= ldapEntry.getAttributesMultiValues().get("member");
-				for (int i = 0; i < members.length; i++) {
-					String dn = members[i];
-					try {
-						List<LdapEntry> member= ldapService.findSubEntries(dn, "(objectclass=pardusDevice)", new String[] { "*" }, SearchScope.OBJECT);
-						if(member!=null && member.size()>0) {
-							targetEntries.add(member.get(0));
+				List <String> dnList= ldapService.getGroupInGroups(ldapEntry);
+				ldapEntryGroups = ldapService.getLdapDnStringToEntry(dnList);
+				
+					for(LdapEntry ldapEntryGroup : ldapEntryGroups) {
+						String[] members= ldapEntryGroup.getAttributesMultiValues().get("member");
+						for (int i = 0; i < members.length; i++) {
+							String dn = members[i];
+							try {
+								List<LdapEntry> member= ldapService.findSubEntries(dn, "(objectclass=pardusDevice)", new String[] { "*" }, SearchScope.OBJECT);
+								if(member!=null && member.size()>0 ) {
+									if(!ldapService.isExistInLdapEntry(targetEntries, member.get(0)))
+										targetEntries.add(member.get(0));
+								}
+							} catch (LdapException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							}
 						}
-
-
-					} catch (LdapException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
 					}
-				}
-
 			}
 			if(ldapEntry.getType().equals(DNType.ORGANIZATIONAL_UNIT)) {
 

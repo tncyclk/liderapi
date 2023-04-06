@@ -7,22 +7,36 @@ import java.util.List;
 import java.util.Map;
 
 import javax.servlet.http.HttpServletRequest;
-
 import org.apache.directory.api.ldap.model.exception.LdapException;
 import org.apache.directory.api.ldap.model.message.SearchScope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import tr.org.lider.entities.CommandImpl;
+import tr.org.lider.entities.OperationType;
 import tr.org.lider.entities.UserSessionImpl;
 import tr.org.lider.ldap.DNType;
 import tr.org.lider.ldap.LDAPServiceImpl;
@@ -34,10 +48,13 @@ import tr.org.lider.models.UserSessionsModel;
 import tr.org.lider.security.CustomPasswordEncoder;
 import tr.org.lider.services.CommandService;
 import tr.org.lider.services.ConfigurationService;
-import tr.org.lider.services.UserService;
+import tr.org.lider.services.OperationLogService;
+import tr.org.lider.services.UserService;    
 
-@RestController()
-@RequestMapping("/lider/user")
+
+@RestController
+@RequestMapping("/api/lider/user")
+@Tag(name = "User", description = "User Rest Service")
 public class UserController {
 	
 	Logger logger = LoggerFactory.getLogger(UserController.class);
@@ -57,46 +74,102 @@ public class UserController {
 	@Autowired
 	private CustomPasswordEncoder customPasswordEncoder;
 	
-	@RequestMapping(value = "/getOuDetails")
-	public List<LdapEntry> task(LdapEntry selectedEntry) {
+	@Autowired
+	private OperationLogService operationLogService;
+
+	private Object object;
+	
+	@Operation(summary = "Gets the ou detail of the selected entry.", description = "", tags = { "user" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = "Returns the ou detail of the selected entry. Successful"),
+			  @ApiResponse(responseCode = "417", description = "Could not get ou detail of the selected entry. Unexpected error occurred", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/ou-details")
+	public ResponseEntity<List<LdapEntry>> task(LdapEntry selectedEntry) {
 		List<LdapEntry> subEntries = null;
 		try {
 			subEntries = ldapService.findSubEntries(selectedEntry.getUid(), "(objectclass=*)",
 					new String[] { "*" }, SearchScope.ONELEVEL);
 		} catch (LdapException e) {
 			e.printStackTrace();
+			HttpHeaders headers = new HttpHeaders();
+    		return ResponseEntity
+    				.status(HttpStatus.EXPECTATION_FAILED)
+    				.headers(headers)
+    				.build();
 		}
 		Collections.sort(subEntries);
 		selectedEntry.setChildEntries(subEntries);
-		return subEntries;
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(subEntries);
 	}
 	
-	@RequestMapping(value = "/getOu")
-	public List<LdapEntry> getOu(LdapEntry selectedEntry) {
+	@Operation(summary = "Gets organizational unit  of selected entry", description = "", tags = { "user" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = "Returns ou of selected entry. Successful"),
+			  @ApiResponse(responseCode = "417", description = "Could not get ou of selected entry. Unexpected error occurred", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@GetMapping(value = "/ou")
+	public ResponseEntity<List<LdapEntry>> getOu(LdapEntry selectedEntry) {
 		List<LdapEntry> subEntries = null;
 		try {
 			subEntries = ldapService.findSubEntries(selectedEntry.getUid(), "(&(objectclass=organizationalUnit)(objectclass=pardusLider))",
 					new String[] { "*" }, SearchScope.ONELEVEL);
 		} catch (LdapException e) {
 			e.printStackTrace();
+			HttpHeaders headers = new HttpHeaders();
+    		return ResponseEntity
+    				.status(HttpStatus.EXPECTATION_FAILED)
+    				.headers(headers)
+    				.build();
 		}
 		selectedEntry.setChildEntries(subEntries);
-		return subEntries;
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(subEntries);
+				
 	}
 	
-	@RequestMapping(value = "/getUsers")
-	public List<LdapEntry> getUsers() {
+	@Operation(summary = "Gets users list", description = "", tags = { "user" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = "Returns users list. Successful"),
+			  @ApiResponse(responseCode = "417", description = "Could not get users list. Unexpected error occurred", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/users")
+	public ResponseEntity<List<LdapEntry>> getUsers() {
 		List<LdapEntry> retList = new ArrayList<LdapEntry>();
 		retList.add(ldapService.getLdapUserTree());
-		return retList;
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(retList);
+				
 	}
 	
-	@RequestMapping(method=RequestMethod.POST, value = "/addOu",produces = MediaType.APPLICATION_JSON_VALUE)
-	public LdapEntry addOu(LdapEntry selectedEntry) {
+	@Operation(summary = "Create ou", description = "", tags = { "user" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = "Created ou. Successful"),
+			  @ApiResponse(responseCode = "417", description = "Could not create ou.Unexpected error occurred", 
+			    content = @Content(schema = @Schema(implementation = String.class))),
+			  @ApiResponse(responseCode = "226", description = "This uid was found.I am used", 
+			    content = @Content(schema = @Schema(implementation = String.class)))})
+	@PostMapping(value = "/add-ou",produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<LdapEntry> addOu(LdapEntry selectedEntry) {
 		try {
 			Map<String, String[]> attributes = new HashMap<String,String[]>();
 			attributes.put("objectClass", new String[] {"organizationalUnit", "top", "pardusLider"} );
 			attributes.put("ou", new String[] { selectedEntry.getOu() });
+			
+//			List<LdapSearchFilterAttribute> filterAttributesList = new ArrayList<LdapSearchFilterAttribute>();
+//			List<LdapEntry> ouList = null;
+//			filterAttributesList.add(new LdapSearchFilterAttribute("ou", selectedEntry.getOu(), SearchFilterEnum.EQ));	
+//			ouList = ldapService.search(selectedEntry.getDistinguishedName(), filterAttributesList, new String[] {"*"});
+			
+			HttpHeaders headers = new HttpHeaders();
+//			if(!ouList.isEmpty()){
+//				headers.add("message", "This uid was found. Could not create ou");
+//				return ResponseEntity.status(HttpStatus.IM_USED).headers(headers).build();
+//			}
 
 			String dn="ou="+selectedEntry.getOu()+","+selectedEntry.getParentName();
 			
@@ -106,16 +179,41 @@ public class UserController {
 			//get full of ou details after creation
 			selectedEntry = ldapService.getEntryDetail(dn);
 			
-			return selectedEntry;
+			String log = selectedEntry.getOu() + " has been created in " + selectedEntry.getDistinguishedName();
+			try {
+//				operationLogService.saveOperationLog(OperationType.CREATE, log, null, null, null, null);
+				operationLogService.saveOperationLog(OperationType.CREATE, log, null);
+			} catch (Exception e) {
+				e.printStackTrace();
+	    		return ResponseEntity
+	    				.status(HttpStatus.EXPECTATION_FAILED)
+	    				.headers(headers)
+	    				.build();
+			}
+			
+			return ResponseEntity
+					.status(HttpStatus.OK)
+					.body(selectedEntry);
 		} catch (LdapException e) {
 			e.printStackTrace();
-			return null;
+			HttpHeaders headers = new HttpHeaders();
+    		return ResponseEntity
+    				.status(HttpStatus.EXPECTATION_FAILED)
+    				.headers(headers)
+    				.build();
 		}
 	}
 	
-	@RequestMapping(method=RequestMethod.POST, value = "/addUser",produces = MediaType.APPLICATION_JSON_VALUE)
-	@ResponseBody
-	public LdapEntry addUser(LdapEntry selectedEntry) {
+	
+	@Operation(summary = "Add user to selected entry", description = "", tags = { "user" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = "Added user to selected entry. Successful"),
+			  @ApiResponse(responseCode = "417", description = "Could not add user. Unexpected error occurred", 
+			    content = @Content(schema = @Schema(implementation = String.class))) ,
+			  @ApiResponse(responseCode = "226", description = "This uid was found. I am used", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/add-user",produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<LdapEntry>  addUser(LdapEntry selectedEntry) {
 		try {
 			String gidNumber="6000";
 			int randomInt = (int)(1000000.0 * Math.random());
@@ -142,33 +240,62 @@ public class UserController {
 				selectedEntry.setParentName(configurationService.getUserLdapBaseDn());
 			}
 			
-			String rdn="uid="+selectedEntry.getUid()+","+selectedEntry.getParentName();
-
-			ldapService.addEntry(rdn, attributes);
+			List<LdapSearchFilterAttribute> filterAttributesList = new ArrayList<LdapSearchFilterAttribute>();
+			List<LdapEntry> users = null;
+			filterAttributesList.add(new LdapSearchFilterAttribute("uid", selectedEntry.getUid(), SearchFilterEnum.EQ));
+			users = ldapService.search(configurationService.getUserLdapBaseDn(), filterAttributesList, new String[] {"*"});
+			HttpHeaders headers = new HttpHeaders();
 			
+			if(!users.isEmpty()) {
+				headers.add("message", "This uid was found. Could not create user ");
+				return ResponseEntity.status(HttpStatus.IM_USED).headers(headers).build();
+			}
+			
+			String rdn="uid="+selectedEntry.getUid()+","+selectedEntry.getParentName();
+			ldapService.addEntry(rdn, attributes);
 			selectedEntry.setAttributesMultiValues(attributes);
 			selectedEntry.setDistinguishedName(selectedEntry.getUid());
-
 			logger.info("User created successfully RDN ="+rdn);
 			selectedEntry = ldapService.findSubEntries(rdn, "(objectclass=*)", new String[] {"*"}, SearchScope.OBJECT).get(0);
-
 			
-			return selectedEntry;
+			String log = selectedEntry.getUid() + " has been created in " + selectedEntry.getDistinguishedName();
+			try {
+//				operationLogService.saveOperationLog(OperationType.CREATE, log, null, null, null, null);
+				operationLogService.saveOperationLog(OperationType.CREATE, log, null);
+			} catch (Exception e) {
+				e.printStackTrace();
+				return ResponseEntity.status(HttpStatus.EXPECTATION_FAILED).headers(headers).build();
+			}
+			
+			return ResponseEntity
+					.status(HttpStatus.OK)
+					.body(selectedEntry);
+			
+			
 		} catch (LdapException e) {
 			e.printStackTrace();
-			return null;
+			HttpHeaders headers = new HttpHeaders();
+			return ResponseEntity.status(HttpStatus.EXPECTATION_FAILED).headers(headers).build();
 		}
 	}
+	
 	/**
 	 * delete selected user
 	 * @param selectedEntryArr
 	 * @return
 	 */
-	@RequestMapping(method=RequestMethod.POST, value = "/deleteUser")
-	@ResponseBody
-	public Boolean deleteUser(@RequestBody LdapEntry[] selectedEntryArr) {
+	@Operation(summary = "Delete select user", description = "", tags = { "user" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = "Deleted select user.Successful"),
+			  @ApiResponse(responseCode = "417", description = "Could not delete user. Unexpected error occurred", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/delete-user")
+	//@RequestMapping(method=RequestMethod.POST, value = "/deleteUser")
+	public ResponseEntity<Boolean> deleteUser(@RequestBody LdapEntry[] selectedEntryArr) {
 		try {
+			LdapEntry userLdapEntry = null;
 			for (LdapEntry ldapEntry : selectedEntryArr) {
+				userLdapEntry = ldapEntry;
 				if(ldapEntry.getType().equals(DNType.USER)) {
 					List<LdapEntry> subEntries = ldapService.search("member", ldapEntry.getDistinguishedName(), new String[] {"*"});
 					for (LdapEntry groupEntry : subEntries) {
@@ -188,10 +315,32 @@ public class UserController {
 					logger.info("User deleted successfully RDN ="+ldapEntry.getDistinguishedName());
 				}
 			}
-			return true;
+			
+			String log =  userLdapEntry.getDistinguishedName() + " has been deleted";
+			try {
+	//				operationLogService.saveOperationLog(OperationType.CREATE, log, null, null, null, null);
+				operationLogService.saveOperationLog(OperationType.DELETE, log, null);
+			} catch (Exception e) {
+				e.printStackTrace();
+				HttpHeaders headers = new HttpHeaders();
+	    		return ResponseEntity
+	    				.status(HttpStatus.EXPECTATION_FAILED)
+	    				.headers(headers)
+	    				.build();
+			}
+				
+			
+			return ResponseEntity
+					.status(HttpStatus.OK)
+					.body(true);
+					
 		} catch (LdapException e) {
 			e.printStackTrace();
-			return null;
+			HttpHeaders headers = new HttpHeaders();
+    		return ResponseEntity
+    				.status(HttpStatus.EXPECTATION_FAILED)
+    				.headers(headers)
+    				.build();
 		}
 	}
 	
@@ -201,9 +350,15 @@ public class UserController {
 	 * @param selectedEntry
 	 * @return
 	 */
-	@RequestMapping(method=RequestMethod.POST, value = "/editUser",produces = MediaType.APPLICATION_JSON_VALUE)
-	@ResponseBody
-	public LdapEntry editUser(LdapEntry selectedEntry) {
+	@Operation(summary = "Update user", description = "", tags = { "user" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = "User updated. Successful"),
+			  @ApiResponse(responseCode = "417", description = "Could not update user.Unexpected error occurred", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/edit-user",produces = MediaType.APPLICATION_JSON_VALUE)
+	//@RequestMapping(method=RequestMethod.POST, value = "/editUser",produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<LdapEntry> editUser(LdapEntry selectedEntry) {
+		LdapEntry oldSelectedEntry = selectedEntry;
 		try {
 			if(!"".equals(selectedEntry.getCn())){
 				ldapService.updateEntry(selectedEntry.getDistinguishedName(), "cn", selectedEntry.getCn());
@@ -220,14 +375,43 @@ public class UserController {
 			if(!"".equals(selectedEntry.getHomePostalAddress())){
 				ldapService.updateEntry(selectedEntry.getDistinguishedName(), "homePostalAddress", selectedEntry.getHomePostalAddress());
 			}
-			
-			
+						
 			selectedEntry = ldapService.findSubEntries(selectedEntry.getDistinguishedName(), "(objectclass=*)", new String[] {"*"}, SearchScope.OBJECT).get(0);
 
-			return selectedEntry;
+			String log = selectedEntry.getUid() + " has been updated ";	
+			
+			Map<String, Object> requestData = new HashMap<String, Object>();
+			requestData.put("cn",oldSelectedEntry.getCn());
+			requestData.put("sn",oldSelectedEntry.getSn());
+			requestData.put("telephoneNumber",oldSelectedEntry.getTelephoneNumber());
+			requestData.put("mail",oldSelectedEntry.getMail());
+			requestData.put("homePostalAddress",oldSelectedEntry.getHomePostalAddress());
+
+			ObjectMapper mapper = new ObjectMapper();
+			String jsonString = "";
+			try {
+				jsonString = mapper.writeValueAsString(requestData);
+			} catch (JsonProcessingException e1) {
+				logger.error("Error occured while mapping request data to json. Error: " +  e1.getMessage());
+			}
+	
+			try {	
+				operationLogService.saveOperationLog(OperationType.UPDATE, log, jsonString.getBytes(),null, null, null);
+//				operationLogService.saveOperationLog(OperationType.UPDATE, log, null);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+			
+			return ResponseEntity
+					.status(HttpStatus.OK)
+					.body(selectedEntry);
 		} catch (LdapException e) {
 			e.printStackTrace();
-			return null;
+			HttpHeaders headers = new HttpHeaders();
+    		return ResponseEntity
+    				.status(HttpStatus.EXPECTATION_FAILED)
+    				.headers(headers)
+    				.build();
 		}
 	}
 	
@@ -236,9 +420,14 @@ public class UserController {
 	 * @param selectedEntry
 	 * @return
 	 */
-	@RequestMapping(method=RequestMethod.POST, value = "/updateUserPassword",produces = MediaType.APPLICATION_JSON_VALUE)
-	@ResponseBody
-	public LdapEntry updateUserPassword(LdapEntry selectedEntry) {
+	
+	@Operation(summary = "Update user password", description = "", tags = { "user" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = "User password updated. Successful"),
+			  @ApiResponse(responseCode = "417", description = "Could not update user password.Unexpected error occurred", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/update-user-password",produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<LdapEntry> updateUserPassword(LdapEntry selectedEntry) {
 		try {
 		
 			if(!"".equals(selectedEntry.getUserPassword())){
@@ -246,20 +435,42 @@ public class UserController {
 			}
 			selectedEntry = ldapService.findSubEntries(selectedEntry.getDistinguishedName(), "(objectclass=*)", new String[] {"*"}, SearchScope.OBJECT).get(0);
 			
-			return selectedEntry;
+			String log = selectedEntry.getUid() + " password has been changed";
+			try {
+//				operationLogService.saveOperationLog(OperationType.CREATE, log, null, null, null, null);
+				operationLogService.saveOperationLog(OperationType.CHANGE_PASSWORD, log, null);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+			
+			return ResponseEntity
+					.status(HttpStatus.OK)
+					.body(selectedEntry);
+					
 		} catch (LdapException e) {
 			e.printStackTrace();
-			return null;
+			HttpHeaders headers = new HttpHeaders();
+    		return ResponseEntity
+    				.status(HttpStatus.EXPECTATION_FAILED)
+    				.headers(headers)
+    				.build();
 		}
 	}
+	
 	/**
 	 * getting password policy  
 	 * @param selectedEntry
 	 * @return
 	 */
-	@RequestMapping(method=RequestMethod.POST, value = "/getPasswordPolices",produces = MediaType.APPLICATION_JSON_VALUE)
-	@ResponseBody
-	public List<LdapEntry> getPasswordPolices() {
+	
+	@Operation(summary = "Gets password policy", description = "", tags = { "user" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = ""),
+			  @ApiResponse(responseCode = "417", description = "Could not get password polices.Unexpected error occurred", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@GetMapping(value = "/password-polices",produces = MediaType.APPLICATION_JSON_VALUE)
+	//@RequestMapping(method=RequestMethod.POST, value = "/getPasswordPolices",produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<List<LdapEntry>> getPasswordPolices() {
 		List<LdapEntry> passwordPolicies = null;
 		try {
 			passwordPolicies = ldapService.findSubEntries(configurationService.getLdapRootDn(), "(objectclass=pwdPolicy)",
@@ -268,28 +479,53 @@ public class UserController {
 		} catch (LdapException e) {
 			e.printStackTrace();
 		}
-		return passwordPolicies;
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(passwordPolicies);
+				
 	}
+	
 	/**
 	 * set password policy to user  
 	 * @param passwordPolicy
 	 * @return
 	 */
-	@RequestMapping(method=RequestMethod.POST, value = "/setPasswordPolicy",produces = MediaType.APPLICATION_JSON_VALUE)
-	@ResponseBody
-	public LdapEntry setPasswordPolicy(@RequestParam(value = "dn", required=true) String dn,@RequestParam(value = "passwordPolicy", required=true) String passwordPolicy) {
+	@Operation(summary = "Create password policy", description = "", tags = { "user" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = ""),
+			  @ApiResponse(responseCode = "417", description = "Could not change password policies.Unexpected error occured.", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/password-policy",produces = MediaType.APPLICATION_JSON_VALUE)
+	//@RequestMapping(method=RequestMethod.POST, value = "/setPasswordPolicy",produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<LdapEntry> setPasswordPolicy(@RequestParam(value = "dn", required=true) String dn,@RequestParam(value = "passwordPolicy", required=true) String passwordPolicy) {
 		LdapEntry selectedEntry=null;
 		try {
 			ldapService.updateEntry(dn, "pwdPolicySubentry", passwordPolicy);
 			
 		selectedEntry = ldapService.findSubEntries(dn, "(objectclass=*)", new String[] {"*"}, SearchScope.OBJECT).get(0);
 
+
+		String log = selectedEntry.getDistinguishedName() + " has been changed ";
+		try {
+//			operationLogService.saveOperationLog(OperationType.CREATE, log, null, null, null, null);
+			operationLogService.saveOperationLog(OperationType.UPDATE, log, null);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 			
 		} catch (LdapException e) {
 			e.printStackTrace();
-			return null;
+			HttpHeaders headers = new HttpHeaders();
+    		return ResponseEntity
+    				.status(HttpStatus.EXPECTATION_FAILED)
+    				.headers(headers)
+    				.build();
 		}
-		return selectedEntry;
+		
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(selectedEntry);
+				
 	}
 	
 	/**
@@ -297,8 +533,14 @@ public class UserController {
 	 * @param selectedEntryArr
 	 * @return
 	 */
-	@RequestMapping(value = "/getUsersUnderOU", method = { RequestMethod.POST })
-	public List<LdapEntry> getUsersUnderOU(HttpServletRequest request,Model model, @RequestBody LdapEntry[] selectedEntryArr) {
+	@Operation(summary = "", description = "", tags = { "user" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = ""),
+			  @ApiResponse(responseCode = "417", description = "", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/users-under-ou")
+	//@RequestMapping(value = "/getUsersUnderOU", method = { RequestMethod.POST })
+	public ResponseEntity<List<LdapEntry>> getUsersUnderOU(HttpServletRequest request,Model model, @RequestBody LdapEntry[] selectedEntryArr) {
 		List<LdapEntry> userList=new ArrayList<>();
 		for (LdapEntry ldapEntry : selectedEntryArr) {
 			List<LdapSearchFilterAttribute> filterAttributes = new ArrayList<LdapSearchFilterAttribute>();
@@ -320,15 +562,27 @@ public class UserController {
 				}
 			} catch (LdapException e) {
 				e.printStackTrace();
+				HttpHeaders headers = new HttpHeaders();
+	    		return ResponseEntity
+	    				.status(HttpStatus.EXPECTATION_FAILED)
+	    				.headers(headers)
+	    				.build();
 			}
 		}
-		return userList;
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(userList);
 	}
 
 	//add new group and add selected agents
-	@RequestMapping(method=RequestMethod.POST ,value = "/createNewGroup", produces = MediaType.APPLICATION_JSON_VALUE)
-	@ResponseBody
-	public LdapEntry createNewUserGroup(@RequestParam(value = "selectedOUDN", required=false) String selectedOUDN,
+	@Operation(summary = "Create new group", description = "", tags = { "user" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = "Created new group under ou.Successful"),
+			  @ApiResponse(responseCode = "417", description = "Could not create group under ou. Unexpected error occured", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/create-new-group", produces = MediaType.APPLICATION_JSON_VALUE)
+	//@RequestMapping(method=RequestMethod.POST ,value = "/createNewGroup", produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<LdapEntry> createNewUserGroup(@RequestParam(value = "selectedOUDN", required=false) String selectedOUDN,
 			@RequestParam(value = "groupName", required=true) String groupName,
 			@RequestParam(value = "checkedList[]", required=true) String[] checkedList) {
 		String newGroupDN = "";
@@ -361,45 +615,76 @@ public class UserController {
 			}
 			ldapService.addEntry(newGroupDN , attributes);
 			entry = ldapService.getEntryDetail(newGroupDN);
+			
+			String log = newGroupDN + " has been created in";
+			operationLogService.saveOperationLog(OperationType.CREATE, log, null, null, null, null);
+			
 		} catch (LdapException e) {
 			System.out.println("Error occured while adding new group.");
-			return null;
+			HttpHeaders headers = new HttpHeaders();
+    		return ResponseEntity
+    				.status(HttpStatus.EXPECTATION_FAILED)
+    				.headers(headers)
+    				.build();
 		}
-		return entry;
+		
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(entry);
 	}
 	
 	/**
-	 * delete user ous
+	 * delete user ou's
 	 * @param selectedEntryArr
 	 * @return
 	 */
 	
-	@RequestMapping(method=RequestMethod.POST, value = "/deleteUserOu")
-	@ResponseBody
-	public Boolean deleteUserOu(@RequestBody LdapEntry[] selectedEntryArr) {
+	@Operation(summary = "Delete user under organizational unit", description = "", tags = { "user" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = "Deleted user under organizational unit.Successful"),
+			  @ApiResponse(responseCode = "417", description = "Could not delete user under ou. Unexpected error occured", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/delete-user-ou")
+	//@RequestMapping(method=RequestMethod.POST, value = "/deleteUserOu")
+	public ResponseEntity<Boolean> deleteUserOu(@RequestBody LdapEntry[] selectedEntryArr) {
+		LdapEntry deletedLdapEntry = null;
 		try {
 			for (LdapEntry ldapEntry : selectedEntryArr) {
+				deletedLdapEntry = ldapEntry;
 				if(ldapEntry.getType().equals(DNType.ORGANIZATIONAL_UNIT)) {
 					ldapService.updateOLCAccessRulesAfterEntryDelete(ldapEntry.getDistinguishedName());
 					ldapService.deleteNodes(ldapService.getOuAndOuSubTreeDetail(ldapEntry.getDistinguishedName()));
 				}
 			}
-			return true;
+
+			String log = deletedLdapEntry.getDistinguishedName() + " has been deleted";
+			operationLogService.saveOperationLog(OperationType.DELETE, log, null, null, null, null);
+			
+			return ResponseEntity
+					.status(HttpStatus.OK)
+					.body(true);
 		} catch (Exception e) {
 			e.printStackTrace();
-			return null;
+			return ResponseEntity
+					.status(HttpStatus.EXPECTATION_FAILED)
+					.body(false);
 		}
 	}
 	
 	/**
-	 * delete user ous
+	 * get last user
 	 * @param selectedEntryArr
 	 * @return
 	 */
 	
-	@RequestMapping(method=RequestMethod.POST, value = "/getLastUser")
-	@ResponseBody
-	public LdapEntry getLastUser() {
+	@Operation(summary = "", description = "", tags = { "user" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = ""),
+			  @ApiResponse(responseCode = "417", description = "", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@GetMapping(value = "/last-user")
+	//@RequestMapping(method=RequestMethod.POST, value = "/getLastUser")
+	public ResponseEntity<LdapEntry> getLastUser() {
 		String globalUserOu = configurationService.getUserLdapBaseDn();
 		LdapEntry lastUser=null;
 		try {
@@ -413,19 +698,31 @@ public class UserController {
 			logger.info("last user : "+lastUser);
 		} catch (LdapException e) {
 			e.printStackTrace();
+			HttpHeaders headers = new HttpHeaders();
+    		return ResponseEntity
+    				.status(HttpStatus.EXPECTATION_FAILED)
+    				.headers(headers)
+    				.build();
 		}
-		return lastUser;
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(lastUser);
 	}
 	
-	@RequestMapping(method=RequestMethod.POST, value = "/getUserSessions")
-	@ResponseBody
-	public List<UserSessionsModel> getUserSessions(@RequestParam(value = "uid", required=true) String uid) {
+	@Operation(summary = "Gets user session", description = "", tags = { "user" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = ""),
+			  @ApiResponse(responseCode = "417", description = "Could not get user session. Unexpected error occurred", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@GetMapping(value = "/user-session/uid/{uid}")
+	//@RequestMapping(method=RequestMethod.POST, value = "/getUserSessions")
+	public ResponseEntity<List<UserSessionsModel>> getUserSessions(@PathVariable String uid) {
 		List<UserSessionsModel> userSessions=null;
 		try {
-			List<UserSessionImpl> userSessionsDb=	userService.getUserSessions(uid);
+			List<UserSessionImpl> userSessionsDb = userService.getUserSessions(uid);
 			userSessions=new ArrayList<>();
 			for (UserSessionImpl userSessionImpl : userSessionsDb) {
-				UserSessionsModel model= new UserSessionsModel();
+				UserSessionsModel model = new UserSessionsModel();
 				model.setAgent(userSessionImpl.getAgent());
 				model.setCreateDate(userSessionImpl.getCreateDate());
 				model.setId(userSessionImpl.getId());
@@ -436,20 +733,43 @@ public class UserController {
 			}
 		} catch (Exception e) {
 			e.printStackTrace();
+			HttpHeaders headers = new HttpHeaders();
+    		return ResponseEntity
+    				.status(HttpStatus.EXPECTATION_FAILED)
+    				.headers(headers)
+    				.build();
 		}
-		return userSessions;
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(userSessions);
+				
 	}
 	
-	@RequestMapping(method=RequestMethod.POST ,value = "/move/entry", produces = MediaType.APPLICATION_JSON_VALUE)
-	public Boolean moveEntry(@RequestParam(value="sourceDN", required=true) String sourceDN,
+	@Operation(summary = "Move entry", description = "", tags = { "user" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = ""),
+			  @ApiResponse(responseCode = "417", description = "Could not move entry. Unexpected error occurred", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/move/entry", produces = MediaType.APPLICATION_JSON_VALUE)
+	//@RequestMapping(method=RequestMethod.POST ,value = "/move/entry", produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<Boolean> moveEntry(@RequestParam(value="sourceDN", required=true) String sourceDN,
 			@RequestParam(value="destinationDN", required=true) String destinationDN) {
 		try {
 			ldapService.moveEntry(sourceDN, destinationDN);
+			
+			String log = sourceDN + " has been moved to " + destinationDN;
+			operationLogService.saveOperationLog(OperationType.MOVE, log, null, null, null, null);
+			
 		} catch (Exception e) {
 			e.printStackTrace();
-			return false;
+			return ResponseEntity
+					.status(HttpStatus.EXPECTATION_FAILED)
+					.body(false);
+					
 		}
-		return true;
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(true);
 	}
 	
 	/**
@@ -459,29 +779,109 @@ public class UserController {
 	 * @param value
 	 * @return
 	 */
-	@RequestMapping(method=RequestMethod.POST ,value = "/removeAttributeWithValue", produces = MediaType.APPLICATION_JSON_VALUE)
-	public LdapEntry removeAttributeWithValue(
-			@RequestParam(value="dn", required=true) String dn,
-			@RequestParam(value="attribute", required=true) String attribute, 
-			@RequestParam(value="value", required=true) String value) {
+	@Operation(summary = "Delete attribute and values", description = "", tags = { "user" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = "Deleted attribute and vulues. Successful"),
+			  @ApiResponse(responseCode = "417", description = "Could not delete attribute. Unexpected error occurred", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@DeleteMapping(value = "/attribute-with-value/dn/{dn}/attribute/{attribute}/value/{value}", produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<LdapEntry> removeAttributeWithValue(
+			@PathVariable String dn,
+			@PathVariable String attribute, 
+			@PathVariable String value) {
 		
 		LdapEntry entry=null;
 		try {
 			ldapService.updateEntryRemoveAttributeWithValue(dn, attribute, value);
 			entry = ldapService.findSubEntries(dn, "(objectclass=*)", new String[] {"*"}, SearchScope.OBJECT).get(0);
+			
+			String log = entry.getUid() + " " + attribute + " has been deleted" ;
+			
+			Map<String, Object> requestData = new HashMap<String, Object>();
+			requestData.put(attribute, value);
+			ObjectMapper mapper = new ObjectMapper();
+			String jsonString = "";
+			try {
+				jsonString = mapper.writeValueAsString(requestData);
+				operationLogService.saveOperationLog(OperationType.DELETE, log, jsonString.getBytes(), null, null, null);
+			} catch (JsonProcessingException e1) {
+				logger.error("Error occured while mapping request data to json. Error: " +  e1.getMessage());
+			}			
 		} catch (LdapException e) {
 			e.printStackTrace();
-			return null;
+			HttpHeaders headers = new HttpHeaders();
+    		return ResponseEntity
+    				.status(HttpStatus.EXPECTATION_FAILED)
+    				.headers(headers)
+    				.build();
 		}
-		return entry ;
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(entry);
+				
 	}
 	
-	@RequestMapping(method=RequestMethod.GET, value = "/configurations", produces = MediaType.APPLICATION_JSON_VALUE)
-	public HashMap<String, Object> getConfigParams() {
+	@Operation(summary = "Gets configurations", description = "", tags = { "user" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = "Configurations updated. Successful"),
+			  @ApiResponse(responseCode = "417", description = "Could not update configurations. Unexpected error occured ", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@GetMapping(value = "/configurations", produces = MediaType.APPLICATION_JSON_VALUE)
+	//@RequestMapping(method=RequestMethod.GET, value = "/configurations", produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<HashMap<String, Object>> getConfigParams() {
 		ConfigParams configParams = configurationService.getConfigParams();
 		HashMap<String, Object> configMap = new HashMap<String, Object>();
 		configMap.put("userGroupLdapBaseDn", configParams.getUserGroupLdapBaseDn());
 		configMap.put("userLdapBaseDn", configParams.getUserLdapBaseDn());
-		return configMap;
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(configMap);
+				
+	}
+	
+	@Operation(summary = "Make user Enable or Disable ", description = "", tags = { "user" })
+	@ApiResponses(value = { 
+			  @ApiResponse(responseCode = "200", description = ""),
+			  @ApiResponse(responseCode = "417", description = "", 
+			    content = @Content(schema = @Schema(implementation = String.class))) })
+	@PostMapping(value = "/user-enable-disable")
+	public ResponseEntity<?> updateDomainAdmin(@RequestParam(value = "dn") String dn,
+			@RequestParam(value = "isDisableUser") Boolean isDisableUser) {
+		try {
+			if (isDisableUser) {
+				ldapService.updateEntryAddAtribute(dn, "pwdAccountLockedTime", "20280112065328.185Z");
+			} else {
+				try {
+					ldapService.updateEntryRemoveAttributeWithValue(dn, "pwdAccountLockedTime", "20280112065328.185Z");
+				} catch (LdapException e) {
+					e.printStackTrace();
+					HttpHeaders headers = new HttpHeaders();
+		    		return ResponseEntity
+		    				.status(HttpStatus.EXPECTATION_FAILED)
+		    				.headers(headers)
+		    				.build();
+				}
+			}
+			Map<String, Object> requestData = new HashMap<String, Object>();
+			requestData.put("dn", dn);
+			ObjectMapper dataMapper = new ObjectMapper();
+			String jsonString = dataMapper.writeValueAsString(requestData);
+			
+			if (isDisableUser) {
+				String logAdded = "The user has been disabled. " + dn;
+				operationLogService.saveOperationLog(OperationType.UPDATE, logAdded, jsonString.getBytes(), null, null, null);
+			} else {
+				String logDeleted = "The user has been enabled. " + dn;
+				operationLogService.saveOperationLog(OperationType.UPDATE, logDeleted, jsonString.getBytes(), null, null, null);
+			}
+			
+			LdapEntry selectedEntry = ldapService.getEntryDetail(dn);
+			return ResponseEntity
+					.status(HttpStatus.OK)
+					.body(selectedEntry);
+		} catch (Exception e) {
+			e.printStackTrace();
+			return new ResponseEntity<String[]>(new String[] {"Hata oluştu"}, HttpStatus.EXPECTATION_FAILED);
+		}
 	}
 }
